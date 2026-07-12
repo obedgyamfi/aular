@@ -1,22 +1,62 @@
-// Package engine is the seam between the open shell and the AULAR org engine.
+// Package engine is the seam between the open AULAR shell and the org engine.
 //
-// The shell in this repository is a complete, working local agent client: you
-// can talk to agents, watch their tool calls, and manage a small team. What it
-// deliberately does NOT contain is the orchestration engine — agent-to-agent
-// dispatch, the report relay, the SLA watchdog, the knowledge bank and
-// roadmap, and the organization dashboard. That engine is what AULAR sells.
+// The shell in this repository is a complete local agent client: you can talk
+// to agents, watch their tool calls, and run a small team. What it does NOT
+// contain is the organization — agent-to-agent dispatch, the report relay, the
+// SLA watchdog, the shared knowledge bank and roadmap. That engine is what
+// AULAR sells, and it lives in a separate, private module.
 //
-// The shell depends only on this interface. The free build wires the Noop
-// implementation below (see cmd/aular-core). The commercial build links the
-// real engine and passes a license check. Nothing here is a stub of the paid
-// code — it is the honest boundary between the two.
+// Because the engine is a different Go module, it cannot import the shell's
+// internal packages (Go's internal/ rule is path-based). This package is
+// therefore a self-contained API: it defines its own types, and the shell
+// adapts to them. That constraint is a feature — it forces the boundary to
+// stay a real, stable interface rather than a leaky import.
+//
+//	shell ──▶ Engine   (what the org does to a turn)
+//	shell ◀── Host     (what the org may ask the shell to do)
 package engine
 
 import (
 	"context"
+	"database/sql"
+	"time"
 )
 
-// Turn is one agent turn the engine may act on, after the shell has persisted
+// ─── Types crossing the boundary ────────────────────────────────────────────
+
+// Agent is a member of the user's organization.
+type Agent struct {
+	ID        string
+	Name      string
+	Role      string
+	Persona   string
+	ReportsTo string // "" = reports to the user
+}
+
+// Message is one turn in a conversation.
+type Message struct {
+	ID         string
+	SenderType string // "user" | "agent" | "system"
+	Content    string
+	CreatedAt  time.Time
+}
+
+// Conversation is a thread between the user and one agent.
+type Conversation struct {
+	ID             string
+	UserID         string
+	AgentProfileID string
+}
+
+// Prompt is a system prompt being assembled for an agent. The engine returns
+// the prompt the agent should actually run with.
+type Prompt struct {
+	UserID         string
+	AgentProfileID string
+	Base           string // persona + instructions, built by the shell
+}
+
+// Turn is an agent reply the engine may act on, after the shell has persisted
 // and broadcast it.
 type Turn struct {
 	UserID         string
@@ -24,57 +64,89 @@ type Turn struct {
 	AgentProfileID string
 	MessageID      string
 	Content        string
-	// Final is true on the last (finalizing) segment of a streamed reply —
-	// the point at which a reply can be acted on as a whole.
+	// Final is true on the last segment of a streamed reply — the point at
+	// which the reply can be acted on as a whole.
 	Final bool
 }
 
-// Prompt is the system prompt being assembled for an agent, which the engine
-// enriches with org context (team roster, dispatch protocol, doctrine) and the
-// knowledge bank (roadmap, specs, role documents).
-type Prompt struct {
-	UserID         string
-	AgentProfileID string
-	Base           string // persona + instructions, built by the shell
+// ─── What the engine may ask of the shell ───────────────────────────────────
+
+// Host is the shell, as seen by the engine. Everything the org needs to
+// actually move work between agents is here — and nothing else.
+type Host interface {
+	// DB is the app's database. The engine owns its own tables (dispatches,
+	// documents) and migrates them itself; it must not touch the shell's.
+	DB() *sql.DB
+
+	// Roster is the user's agents.
+	Roster(ctx context.Context, userID string) ([]Agent, error)
+	// AgentByName resolves an agent the way a person refers to staff — by
+	// name. Returns nil when there's no such teammate.
+	AgentByName(ctx context.Context, userID, name string) *Agent
+
+	// Conversation returns a thread, or an error if it doesn't exist.
+	Conversation(ctx context.Context, id string) (*Conversation, error)
+	// OpenConversation finds (or starts) the user's thread with an agent —
+	// how dispatched work reaches a teammate's own session.
+	OpenConversation(ctx context.Context, userID, agentID string) (*Conversation, error)
+	// RecentMessages returns a conversation's latest messages, newest first.
+	RecentMessages(ctx context.Context, conversationID string, limit int) ([]Message, error)
+
+	// PostSystemMessage writes a neutral note into a conversation (a task
+	// assignment, a report handoff) and shows it to the user immediately.
+	PostSystemMessage(ctx context.Context, conversationID, text string)
+	// RunTurn makes an agent work: it delivers content into that agent's own
+	// session as a real turn, with the given system prompt. Asynchronous —
+	// the reply arrives through the normal delivery path.
+	RunTurn(conversationID, userID, systemPrompt, content string)
+
+	// BasePrompt is an agent's own persona prompt, before the engine enriches
+	// it. Needed when the engine runs a turn for an agent other than the one
+	// whose reply it is handling.
+	BasePrompt(ctx context.Context, agentID string) string
 }
 
-// Engine is the org layer. Every method must be safe to call on a nil-ish
-// (Noop) implementation — the shell never branches on tier.
+// ─── What the org does ──────────────────────────────────────────────────────
+
+// Engine is the organization layer. Every method must be safe to call on the
+// free implementation, so the shell never branches on tier.
 type Engine interface {
 	// Name identifies the linked engine in logs and the About window.
 	Name() string
 
-	// EnrichPrompt returns the system prompt an agent should run with. The
-	// free engine returns p.Base unchanged.
+	// Attach gives the engine its handle on the shell. Called once at boot,
+	// before any other method.
+	Attach(h Host)
+
+	// EnrichPrompt returns the system prompt an agent should run with — the
+	// team roster, the dispatch protocol, the knowledge bank. The free engine
+	// returns p.Base unchanged.
 	EnrichPrompt(ctx context.Context, p Prompt) string
 
-	// OnAgentReply is called after an agent's reply is persisted. The org
-	// engine parses dispatch/document blocks here, routes work to teammates,
-	// relays reports, and nudges narrated delegation.
+	// OnAgentReply is called after an agent's reply is persisted. This is
+	// where the org happens: dispatch blocks are routed to teammates, reports
+	// are relayed back, and narrated delegation is corrected.
 	OnAgentReply(ctx context.Context, t Turn)
 
-	// MaxAgents caps how many agent profiles a user may create. The free
-	// shell allows a small team; the org engine returns 0 (unlimited).
+	// MaxAgents caps how many agents a user may create; 0 means unlimited.
 	MaxAgents() int
 }
 
-// Noop is the free-tier engine: agents work, but they don't form an
-// organization. This is a real implementation, not a placeholder — the open
-// shell ships with it and is fully functional.
-type Noop struct{}
+// ─── The free engine ────────────────────────────────────────────────────────
 
-func (Noop) Name() string { return "shell (no org engine)" }
-
-func (Noop) EnrichPrompt(_ context.Context, p Prompt) string { return p.Base }
-
-func (Noop) OnAgentReply(context.Context, Turn) {}
-
-// FreeAgentLimit is the number of agents the open shell supports. Beyond this,
-// coordination stops being a chat app and starts being an organization — which
-// is the product.
+// FreeAgentLimit is what the open shell supports. Past this, coordination stops
+// being a chat app and starts being an organization — which is the product.
 const FreeAgentLimit = 3
 
-func (Noop) MaxAgents() int { return FreeAgentLimit }
+// Noop is the free-tier engine: agents work, but they do not form an
+// organization. This is a real implementation, not a placeholder — the open
+// shell ships it and is fully functional.
+type Noop struct{}
 
-// Ensure the free engine satisfies the interface at compile time.
+func (Noop) Name() string                                    { return "shell (no org engine)" }
+func (Noop) Attach(Host)                                     {}
+func (Noop) EnrichPrompt(_ context.Context, p Prompt) string { return p.Base }
+func (Noop) OnAgentReply(context.Context, Turn)              {}
+func (Noop) MaxAgents() int                                  { return FreeAgentLimit }
+
 var _ Engine = Noop{}

@@ -1,84 +1,77 @@
-// Package server boots the shell's HTTP API. It is deliberately thin: the
-// interesting behavior lives either in the domain packages (chat, agents,
-// Hermes bridge) or behind the engine.Engine seam.
+// Package server boots the AULAR shell: database, HTTP API, and the org
+// engine that was linked at build time. It is deliberately thin — the domain
+// lives in internal/, and everything organizational lives behind engine.Engine.
 package server
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/obedgyamfi/aular/core/engine"
+	"github.com/obedgyamfi/aular/core/internal/httpapi"
+	"github.com/obedgyamfi/aular/core/internal/infra/config"
+	"github.com/obedgyamfi/aular/core/internal/infra/db"
 )
-
-// localOnly allows the webview to call the backend. The listener is already
-// bound to loopback, so the only origins that can reach it are the Tauri
-// window (tauri://, http://tauri.localhost) and a local dev server — but the
-// browser still needs to be told that in a header, or every fetch fails
-// silently as an opaque CORS error.
-func localOnly(next http.Handler) http.Handler {
-	allowed := map[string]bool{
-		"http://localhost:1420":   true,
-		"http://127.0.0.1:1420":   true,
-		"tauri://localhost":       true,
-		"http://tauri.localhost":  true,
-		"https://tauri.localhost": true,
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); allowed[origin] {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE")
-		}
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
 
 // Run starts the API with the given engine and blocks until the process is
 // asked to stop. Tauri supervises this as a sidecar and kills it on quit.
 func Run(eng engine.Engine) error {
-	port := os.Getenv("AULAR_PORT")
-	if port == "" {
-		port = "8787"
+	ctx := context.Background()
+
+	// The desktop app keeps its data in the OS's app-data directory, not the
+	// working directory — a double-clicked app has no meaningful cwd.
+	if os.Getenv("AULAR_DB_PATH") == "" {
+		if dir, err := os.UserConfigDir(); err == nil {
+			appDir := filepath.Join(dir, "aular")
+			if err := os.MkdirAll(appDir, 0o755); err == nil {
+				os.Setenv("AULAR_DB_PATH", filepath.Join(appDir, "aular.db"))
+			}
+		}
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","engine":%q,"max_agents":%d}`, eng.Name(), eng.MaxAgents())
-	})
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if p := os.Getenv("AULAR_PORT"); p != "" {
+		cfg.Port = p
+	}
 
-	srv := &http.Server{
-		Addr:              "127.0.0.1:" + port,
-		Handler:           localOnly(mux),
+	sqlDB, err := db.Connect(ctx, cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+
+	srv := httpapi.NewServer(cfg, sqlDB, eng)
+
+	httpSrv := &http.Server{
+		Addr:              "127.0.0.1:" + cfg.Port,
+		Handler:           srv.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	// Tauri sends SIGTERM when the window closes; shut down cleanly so the
-	// SQLite file is never left mid-write.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Tauri sends SIGTERM when the window closes; shut down cleanly so SQLite
+	// is never left mid-write.
+	stopCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
 	go func() {
-		<-ctx.Done()
+		<-stopCtx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = srv.Shutdown(shutdown)
+		_ = httpSrv.Shutdown(shutdown)
 	}()
 
-	log.Printf("aular-core listening on %s (engine: %s)", srv.Addr, eng.Name())
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	log.Printf("aular-core listening on %s (engine: %s, agent limit: %d)",
+		httpSrv.Addr, eng.Name(), eng.MaxAgents())
+	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
