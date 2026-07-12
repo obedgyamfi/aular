@@ -11,7 +11,6 @@
 //!   2. A backend that dies is restarted, not silently absent.
 
 use std::sync::Mutex;
-use std::time::Duration;
 
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Manager, RunEvent};
@@ -29,11 +28,10 @@ pub const PORT: &str = "8787";
 
 /// Spawn the backend sidecar and pipe its output into the app log. Returns the
 /// task that drains the process's stdout/stderr.
-pub fn spawn(app: &AppHandle, licensed: bool) -> tauri::Result<JoinHandle<()>> {
+pub fn spawn(app: &AppHandle, licensed: bool) -> Result<JoinHandle<()>, Box<dyn std::error::Error>> {
     let sidecar = app
         .shell()
-        .sidecar("aular-core")
-        .expect("aular-core sidecar is missing from the bundle")
+        .sidecar("aular-core")?
         .env("AULAR_PORT", PORT)
         .env("AULAR_LICENSED", if licensed { "1" } else { "0" });
 
@@ -73,25 +71,4 @@ pub fn on_run_event(app: &AppHandle, event: &RunEvent) {
     if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
         shutdown(app);
     }
-}
-
-/// Poll the backend's health endpoint until it answers. The window stays on
-/// its loading state until this resolves, so the UI never races the API.
-pub async fn wait_until_ready() -> bool {
-    let url = format!("http://127.0.0.1:{PORT}/healthz");
-    for _ in 0..60 {
-        if reqwest_get_ok(&url).await {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
-    false
-}
-
-/// Minimal health probe. A dependency-free TCP connect is enough to know the
-/// backend is listening; the frontend does the real handshake.
-async fn reqwest_get_ok(_url: &str) -> bool {
-    tokio::net::TcpStream::connect(("127.0.0.1", PORT.parse::<u16>().unwrap_or(8787)))
-        .await
-        .is_ok()
 }

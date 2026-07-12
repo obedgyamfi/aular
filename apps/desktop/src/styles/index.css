@@ -1,100 +1,39 @@
-/* AULAR's style entry.
+/* Style entry — a straight copy of opencode's (MIT), not an interpretation.
  *
- * The architecture is adopted from @opencode-ai/ui (MIT): CSS cascade layers
- * so specificity never fights, and semantic design tokens rather than raw
- * colors in components. We import their layer + Tailwind v4 integration, then
- * define AULAR's own token values on top — same system, our identity.
+ * Their design system is imported wholesale: the v2 token layer, the cascade
+ * layers, and their fonts. Colors come from their theme JSON at runtime (see
+ * src/theme/theme.ts), so every --v2-* token holds their exact value.
  *
- * Rule for anyone touching this app: components reference tokens
- * (var(--text-base)), never hex. Changing the palette must be a one-file edit.
+ * Rule: components use their token classes (bg-v2-background-bg-base,
+ * text-v2-text-text-base). No hex codes anywhere but a theme file.
  */
 @import "@opencode-ai/ui/styles/tailwind";
+@import "@opencode-ai/ui/v2/styles/tailwind.css";
 
-/* @opencode-ai/ui's Tailwind entry pins content-scanning to *their* repo root
- * (`source("../../../../")`), which resolves nowhere useful from inside
- * node_modules — without this line Tailwind emits none of our utilities and
- * every layout silently collapses. Point it at our own source. */
+/* Their Tailwind entry pins content-scanning to their own repo root, which
+ * resolves nowhere from inside node_modules — without this, Tailwind emits
+ * none of our utility classes and every layout silently collapses. */
 @source "../";
 
-/* ── AULAR theme tokens ───────────────────────────────────────────────────
- * A warm near-black terminal ground (OpenCode's insight — it reads as a tool,
- * not a website) carrying AULAR's violet, which is the org's signature and
- * distinguishes us from OpenCode's blue.
- */
-@layer theme {
-  :root,
-  :root[data-color-scheme="dark"] {
-    --aular-bg: #1a1820;
-    --aular-bg-elevated: #211f29;
-    --aular-surface: #2a2734;
-    --aular-surface-hover: #322f3d;
-    --aular-titlebar: #131118;
-
-    --aular-text: #f4f2f8;
-    --aular-text-muted: #a3a0af;
-    --aular-text-faint: #6f6c7c;
-
-    --aular-border: #38353f;
-    --aular-border-soft: #2a2734;
-
-    --aular-accent: #8b7ff5;
-    --aular-accent-hover: #9d93f7;
-    --aular-accent-soft: #2b2545;
-    --aular-on-accent: #ffffff;
-
-    --aular-success: #3ecf8e;
-    --aular-warning: #f5a623;
-    --aular-danger: #f4655b;
-  }
-
-  :root[data-color-scheme="light"] {
-    --aular-bg: #faf9fc;
-    --aular-bg-elevated: #ffffff;
-    --aular-surface: #f1eff6;
-    --aular-surface-hover: #e8e5f0;
-    --aular-titlebar: #ffffff;
-
-    --aular-text: #1a1820;
-    --aular-text-muted: #55525f;
-    --aular-text-faint: #85818f;
-
-    --aular-border: #e0dde8;
-    --aular-border-soft: #eeecf3;
-
-    --aular-accent: #6252e0;
-    --aular-accent-hover: #5343d4;
-    --aular-accent-soft: #ece9fb;
-    --aular-on-accent: #ffffff;
-
-    --aular-success: #12855c;
-    --aular-warning: #b56a00;
-    --aular-danger: #cc372c;
-  }
-
-  :root {
-    /* Type. Berkeley Mono (OpenCode's face) is commercially licensed and
-     * cannot ship in a product we sell — IBM Plex Mono is its declared
-     * fallback and is open (OFL). Monospace everywhere is deliberate: it is
-     * what makes the app read as an instrument rather than a web page. */
-    --aular-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
-      Consolas, "Liberation Mono", monospace;
-    --aular-font-sans: var(--aular-font-mono);
-
-    --aular-radius-sm: 4px;
-    --aular-radius-md: 6px;
-    --aular-radius-lg: 8px;
-
-    --aular-duration-fast: 100ms;
-    --aular-duration-base: 150ms;
-    --aular-ease: cubic-bezier(0.2, 0, 0, 1);
-  }
+@font-face {
+  font-family: "JetBrainsMono Nerd Font Mono";
+  src: url("/assets/JetBrainsMonoNerdFontMono-Regular.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
-@layer base {
-  * {
-    box-sizing: border-box;
-  }
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/Inter.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 
+@import "./titlebar.css";
+
+@layer base {
   html,
   body,
   #root {
@@ -103,28 +42,23 @@
   }
 
   body {
-    background: var(--aular-bg);
-    color: var(--aular-text);
-    font-family: var(--aular-font-mono);
-    font-size: 14px;
-    line-height: 1.5;
+    background: var(--v2-background-bg-deep);
+    color: var(--v2-text-text-base);
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
     -webkit-font-smoothing: antialiased;
-    /* The window chrome is ours; never let the page rubber-band. */
     overflow: hidden;
+  }
+
+  /* The window chrome is ours, so nothing is selectable by default — except
+     the text a person actually reads or types. Copied from their shell. */
+  #root {
     user-select: none;
   }
-
-  /* Text the user is meant to read or copy opts back in. */
   input,
   textarea,
-  [data-selectable] {
+  [contenteditable] {
     user-select: text;
-  }
-
-  :focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--aular-accent);
-    border-radius: var(--aular-radius-sm);
   }
 
   ::-webkit-scrollbar {
@@ -132,14 +66,10 @@
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--aular-border);
+    background: var(--v2-border-border-base);
     border: 3px solid transparent;
     background-clip: content-box;
     border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--aular-text-faint);
-    background-clip: content-box;
   }
   ::-webkit-scrollbar-track {
     background: transparent;

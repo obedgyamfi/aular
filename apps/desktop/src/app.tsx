@@ -7,44 +7,39 @@ import { ChatPane } from "~/components/chat-pane";
 import { api } from "~/lib/api";
 
 /**
- * The window shell: title bar across the top, an icon rail and conversation
- * list on the left, the active pane filling the rest. This is the frame every
- * register (Chat, Work, Org) mounts into — it never re-renders when the pane
- * swaps.
+ * The window shell, laid out the way opencode's is: the titlebar spans the top
+ * on the deep background, and everything below it sits in a single row — rail,
+ * list, then the active pane.
  */
 export function App() {
-  // The backend reports which engine is linked, so the UI can present the
-  // free shell honestly rather than dangling disabled paid features.
   const [health] = createResource(api.health);
 
   return (
-    <div class="flex h-full flex-col overflow-hidden">
+    <div class="relative flex h-full min-h-0 min-w-0 flex-col bg-v2-background-bg-deep">
       <TitleBar engine={health()?.engine} />
 
-      <div class="flex min-h-0 flex-1">
+      <main class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <Rail />
         <Sidebar maxAgents={health()?.max_agents} />
-        <main class="flex min-h-0 min-w-0 flex-1 flex-col">
-          <Show
-            when={!health.error}
-            fallback={
-              <div class="flex flex-1 items-center justify-center px-8 text-center">
-                <div class="flex max-w-sm flex-col gap-2">
-                  <p style={{ color: "var(--aular-danger)" }}>
-                    The agent backend isn't running.
-                  </p>
-                  <p class="text-xs" style={{ color: "var(--aular-text-muted)" }}>
-                    Tauri starts it as a sidecar on launch. In a browser dev
-                    session, start it yourself: <code>go run ./cmd/aular-core</code>
-                  </p>
-                </div>
+        <Show
+          when={!health.error}
+          fallback={
+            <div class="flex flex-1 items-center justify-center bg-v2-background-bg-base px-8 text-center">
+              <div class="flex max-w-sm flex-col gap-1">
+                <p class="text-[13px] text-v2-text-text-base">
+                  The agent backend isn't running.
+                </p>
+                <p class="text-[12px] text-v2-text-text-muted">
+                  Start it with{" "}
+                  <code class="font-mono">go run ./cmd/aular-core</code>
+                </p>
               </div>
-            }
-          >
-            <ChatPane />
-          </Show>
-        </main>
-      </div>
+            </div>
+          }
+        >
+          <ChatPane />
+        </Show>
+      </main>
     </div>
   );
 }

@@ -1,43 +1,27 @@
 import { Show } from "solid-js";
 
-/**
- * Custom window chrome. Tauri hides the native decorations (see
- * tauri.conf.json → decorations: false) so the title bar is ours to draw and
- * must declare its own drag region, or the window can't be moved.
- */
+// Window chrome, copied from opencode's titlebar: 36px tall, sitting on the
+// deep background, drawn by us because the native decorations are off. The
+// whole bar is a drag region except for the controls inside it.
+const TITLEBAR_HEIGHT = 36;
+
 export function TitleBar(props: { engine?: string }) {
   return (
-    <header
+    <div
+      data-slot="titlebar-v2"
       data-tauri-drag-region
-      class="flex h-10 shrink-0 items-center justify-between px-3"
-      style={{
-        background: "var(--aular-titlebar)",
-        "border-bottom": "1px solid var(--aular-border-soft)",
-      }}
+      class="relative z-20 flex shrink-0 items-center gap-2 bg-v2-background-bg-deep px-3"
+      style={{ height: `${TITLEBAR_HEIGHT}px` }}
     >
-      <div data-tauri-drag-region class="flex items-center gap-2">
-        <span
-          class="flex size-5 items-center justify-center rounded text-[11px] font-semibold"
-          style={{ background: "var(--aular-accent)", color: "var(--aular-on-accent)" }}
-        >
-          A
-        </span>
-        <span class="text-[12px]" style={{ color: "var(--aular-text-muted)" }}>
-          AULAR
-        </span>
+      <div data-tauri-drag-region class="flex flex-1 items-center gap-2">
+        <span class="text-[12px] font-medium text-v2-text-text-base">AULAR</span>
       </div>
 
-      {/* The linked engine, stated plainly. The free shell says so; it does not
-          pretend to be something it isn't. */}
+      {/* The linked engine, stated plainly. The free shell says so rather than
+          pretending to be something it isn't. */}
       <Show when={props.engine}>
-        <span
-          class="text-[11px]"
-          style={{ color: "var(--aular-text-faint)" }}
-          title="The backend engine linked into this build"
-        >
-          {props.engine}
-        </span>
+        <span class="shrink-0 text-[11px] text-v2-text-text-muted">{props.engine}</span>
       </Show>
-    </header>
+    </div>
   );
 }
