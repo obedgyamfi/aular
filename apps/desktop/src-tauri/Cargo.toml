@@ -1,0 +1,34 @@
+[package]
+name = "aular"
+version = "0.1.0"
+description = "AULAR — your agent organization, running on your machine"
+authors = ["Obed Gyamfi"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "aular_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+tauri-plugin-log = "2"
+
+[features]
+# Ship builds enable this; it flips the licence check on. The open shell
+# builds without it and runs the free engine.
+licensed = []
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

@@ -1,0 +1,12 @@
+{
+  "name": "aular",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w @aular/desktop",
+    "build": "npm run build -w @aular/desktop",
+    "tauri": "npm run tauri -w @aular/desktop",
+    "typecheck": "npm run typecheck -w @aular/desktop"
+  }
+}
