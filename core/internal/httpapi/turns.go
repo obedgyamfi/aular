@@ -107,7 +107,7 @@ func (s *Server) profileByName(ctx context.Context, userID, name string) *agents
 // engine ignores it; the licensed engine routes dispatched work, relays
 // reports, and corrects narrated delegation. Runs off the delivery path so a
 // slow engine can never stall a reply reaching the user.
-func (s *Server) notifyEngine(ctx context.Context, conversationID, messageID, content string, final bool) {
+func (s *Server) notifyEngine(ctx context.Context, conversationID, messageID, content, raw string, final bool) {
 	convo, err := s.conversationsRepo.GetConversation(ctx, conversationID)
 	if err != nil {
 		return
@@ -118,6 +118,7 @@ func (s *Server) notifyEngine(ctx context.Context, conversationID, messageID, co
 		AgentProfileID: convo.AgentProfileID,
 		MessageID:      messageID,
 		Content:        content,
+		Raw:            raw,
 		Final:          final,
 	}
 	go s.engine.OnAgentReply(context.Background(), turn)

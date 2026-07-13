@@ -48,18 +48,35 @@ func (s *Server) sessionAuth(next http.Handler) http.Handler {
 	})
 }
 
-// originCheck rejects state-changing cross-site requests (CSRF defense in
-// depth on top of SameSite=Lax cookies). Browsers send Sec-Fetch-Site; when
-// present it must be same-origin/same-site/none. Non-browser clients (curl,
-// the Hermes plugin) send neither header and pass.
+// AppOrigins are the origins the desktop app itself speaks from: the webview
+// (tauri://) and, during UI development, the Vite server. The backend listens
+// on loopback only, so nothing else can reach it in the first place.
+var AppOrigins = map[string]bool{
+	"http://localhost:1420":   true,
+	"http://127.0.0.1:1420":   true,
+	"tauri://localhost":       true,
+	"http://tauri.localhost":  true,
+	"https://tauri.localhost": true,
+}
+
+// originCheck rejects state-changing requests from pages that aren't ours.
+//
+// Note what this is NOT for: the app authenticates with a Bearer token, which
+// a browser never attaches on its own, so classic CSRF doesn't apply. This is
+// depth — it stops a random web page a user has open from poking the loopback
+// API. The app's own origins are always allowed (an earlier version wasn't,
+// and silently rejected every login the desktop app made).
 func originCheck(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			switch r.Header.Get("Sec-Fetch-Site") {
-			case "", "same-origin", "same-site", "none":
-			default:
-				writeError(w, http.StatusForbidden, "cross-site request rejected")
-				return
+			origin := r.Header.Get("Origin")
+			if origin != "" && !AppOrigins[origin] {
+				switch r.Header.Get("Sec-Fetch-Site") {
+				case "", "same-origin", "same-site", "none":
+				default:
+					writeError(w, http.StatusForbidden, "cross-site request rejected")
+					return
+				}
 			}
 		}
 		next.ServeHTTP(w, r)
@@ -68,8 +85,7 @@ func originCheck(next http.Handler) http.Handler {
 
 // ctxUserID is how every handler learns whose data to touch: the user id
 // stamped on the context (by sessionAuth for API calls, or by the internal
-// delivery entry points from the conversation's owner). The cfg fallback
-// keeps un-stamped background paths working in dev single-user mode.
+// delivery entry points from the conversation's owner).
 func (s *Server) ctxUserID(ctx context.Context) string {
 	if id := auth.UserID(ctx); id != "" {
 		return id

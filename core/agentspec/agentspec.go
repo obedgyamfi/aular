@@ -1,3 +1,10 @@
+// Package agentspec is the block protocol agents speak — the markers an agent
+// wraps around structured output (a new agent's spec, a dispatch of work to
+// teammates, a document for the knowledge bank).
+//
+// It lives outside internal/ deliberately: the org engine is a separate module
+// and must be able to parse the same blocks the shell hides from the bubble.
+//
 // Package agentspec turns a natural-language conversation with the AULAR system
 // agent into a real AgentProfile. The system agent (an LLM) interviews the user
 // and, on confirmation, emits a structured spec block at the end of its reply;

@@ -17,14 +17,18 @@ use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-/// Handle to the running backend, stored in Tauri state so the exit hook can
-/// reach it.
+/// Handles to the two children the app owns: the Go backend, and the Hermes
+/// gateway that actually runs the agents. Stored in Tauri state so the exit
+/// hook can reach them.
 #[derive(Default)]
 pub struct Backend(pub Mutex<Option<CommandChild>>);
 
+#[derive(Default)]
+pub struct Gateway(pub Mutex<Option<std::process::Child>>);
+
 /// The loopback port the backend binds. Fixed rather than negotiated: the
 /// webview's CSP has to name it, and only one AULAR window runs at a time.
-pub const PORT: &str = "8787";
+pub const PORT: &str = crate::runtime::API_PORT;
 
 /// Spawn the backend sidecar and pipe its output into the app log. Returns the
 /// task that drains the process's stdout/stderr.
@@ -33,7 +37,14 @@ pub fn spawn(app: &AppHandle, licensed: bool) -> Result<JoinHandle<()>, Box<dyn 
         .shell()
         .sidecar("aular-core")?
         .env("AULAR_PORT", PORT)
-        .env("AULAR_LICENSED", if licensed { "1" } else { "0" });
+        .env("AULAR_LICENSED", if licensed { "1" } else { "0" })
+        // Both children share one secret, minted by the shell — a shipped app
+        // has no ambient environment to inherit these from.
+        .env("AULAR_INTERNAL_TOKEN", crate::runtime::internal_token())
+        .env(
+            "AULAR_ADAPTER_URL",
+            format!("http://127.0.0.1:{}", crate::runtime::GATEWAY_PORT),
+        );
 
     let (mut rx, child) = sidecar.spawn()?;
     app.state::<Backend>().0.lock().unwrap().replace(child);
@@ -70,5 +81,58 @@ pub fn shutdown(app: &AppHandle) {
 pub fn on_run_event(app: &AppHandle, event: &RunEvent) {
     if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
         shutdown(app);
+        shutdown_gateway(app);
+    }
+}
+
+
+/// Start the Hermes gateway — the process that actually thinks. Without it the
+/// app has agents that cannot reply, which is the most confusing possible
+/// failure, so a missing Hermes is logged loudly rather than swallowed.
+pub fn spawn_gateway(app: &AppHandle) {
+    if let Err(e) = crate::runtime::prepare_hermes_profile() {
+        log::error!("runtime: could not prepare the Hermes profile: {e}");
+        return;
+    }
+    let home = crate::runtime::hermes_home();
+    let log_path = home.join("gateway.log");
+    let out = match std::fs::File::create(&log_path) {
+        Ok(f) => f,
+        Err(e) => {
+            log::error!("runtime: cannot write {}: {e}", log_path.display());
+            return;
+        }
+    };
+    let errs = out.try_clone().ok();
+
+    let mut cmd = std::process::Command::new("hermes");
+    cmd.args(["gateway", "run"])
+        .env("HERMES_HOME", &home)
+        .stdout(std::process::Stdio::from(out));
+    if let Some(e) = errs {
+        cmd.stderr(std::process::Stdio::from(e));
+    }
+
+    match cmd.spawn() {
+        Ok(child) => {
+            log::info!(
+                "runtime: agent runtime starting (profile {}, port {})",
+                home.display(),
+                crate::runtime::GATEWAY_PORT
+            );
+            app.state::<Gateway>().0.lock().unwrap().replace(child);
+        }
+        Err(e) => log::error!(
+            "runtime: could not start the agent runtime (is `hermes` on PATH?): {e}"
+        ),
+    }
+}
+
+/// Stop the gateway. Called on exit, alongside the backend.
+pub fn shutdown_gateway(app: &AppHandle) {
+    if let Some(mut child) = app.state::<Gateway>().0.lock().unwrap().take() {
+        log::info!("runtime: stopping the agent runtime");
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

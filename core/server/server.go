@@ -35,9 +35,13 @@ func Run(eng engine.Engine) error {
 
 	// The desktop app keeps its data in the OS's app-data directory, not the
 	// working directory — a double-clicked app has no meaningful cwd.
+	// The desktop app keeps its data in its OWN directory. It must never be
+	// ~/.config/aular — that belongs to the self-hosted stack (stack.env,
+	// credentials), and a first-run test that wipes its data directory would
+	// take the running server down with it. (It did, once.)
 	if os.Getenv("AULAR_DB_PATH") == "" {
 		if dir, err := os.UserConfigDir(); err == nil {
-			appDir := filepath.Join(dir, "aular")
+			appDir := filepath.Join(dir, "aular-desktop")
 			if err := os.MkdirAll(appDir, 0o755); err == nil {
 				os.Setenv("AULAR_DB_PATH", filepath.Join(appDir, "aular.db"))
 			}
@@ -54,6 +58,13 @@ func Run(eng engine.Engine) error {
 			return err
 		}
 		os.Setenv("AULAR_INTERNAL_TOKEN", tok)
+	}
+
+	// The desktop app owns its own account: first launch signs you up, and
+	// there is no admin to open a gate. (When the cloud lands it owns this
+	// policy — the app will authenticate against it instead, same contract.)
+	if os.Getenv("AULAR_SIGNUP_MODE") == "" {
+		os.Setenv("AULAR_SIGNUP_MODE", "open")
 	}
 
 	cfg, err := config.Load()
@@ -140,20 +151,12 @@ func migrate(sqlDB *sql.DB) error {
 // a header, or every fetch fails as an opaque CORS error with nothing in the
 // log to explain it.
 func allowWebview(next http.Handler) http.Handler {
-	allowed := map[string]bool{
-		"http://localhost:1420":   true,
-		"http://127.0.0.1:1420":   true,
-		"tauri://localhost":       true,
-		"http://tauri.localhost":  true,
-		"https://tauri.localhost": true,
-	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); allowed[origin] {
+		if origin := r.Header.Get("Origin"); httpapi.AppOrigins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

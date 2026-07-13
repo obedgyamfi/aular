@@ -32,6 +32,7 @@
 }
 
 @import "./titlebar.css";
+@import "./app-menu.css";
 
 @layer base {
   html,
@@ -82,5 +83,74 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/* Agent output. Kept close to the prototype's reading rhythm, on opencode's
+   type and color tokens. */
+@layer components {
+  .aular-markdown {
+    line-height: 1.6;
+  }
+  .aular-markdown > * + * {
+    margin-top: 0.7em;
+  }
+  .aular-markdown h1,
+  .aular-markdown h2,
+  .aular-markdown h3 {
+    font-weight: 600;
+    font-size: 1em;
+    color: var(--v2-text-text-base);
+  }
+  .aular-markdown strong {
+    font-weight: 600;
+    color: var(--v2-text-text-base);
+  }
+  .aular-markdown a {
+    color: var(--v2-text-text-accent);
+    text-decoration: underline;
+  }
+  .aular-markdown ul,
+  .aular-markdown ol {
+    padding-left: 1.2em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+  }
+  .aular-markdown ul { list-style: disc; }
+  .aular-markdown ol { list-style: decimal; }
+  .aular-markdown code {
+    font-family: "JetBrainsMono Nerd Font Mono", ui-monospace, monospace;
+    font-size: 0.9em;
+    background: var(--v2-background-bg-layer-02);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  .aular-markdown pre {
+    background: var(--v2-background-bg-layer-02);
+    border: 1px solid var(--v2-border-border-muted);
+    border-radius: 6px;
+    padding: 0.75em 0.9em;
+    overflow-x: auto;
+  }
+  .aular-markdown pre code {
+    background: none;
+    padding: 0;
+  }
+  .aular-markdown blockquote {
+    border-left: 2px solid var(--v2-border-border-base);
+    padding-left: 0.8em;
+    color: var(--v2-text-text-muted);
+  }
+  .aular-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+  }
+  .aular-markdown th,
+  .aular-markdown td {
+    border: 1px solid var(--v2-border-border-muted);
+    padding: 0.35em 0.6em;
+    text-align: left;
   }
 }

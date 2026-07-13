@@ -7,8 +7,8 @@ import (
 	"log"
 	"strings"
 
+	"github.com/obedgyamfi/aular/core/agentspec"
 	"github.com/obedgyamfi/aular/core/internal/agents"
-	"github.com/obedgyamfi/aular/core/internal/agentspec"
 	"github.com/obedgyamfi/aular/core/internal/realtime"
 	"github.com/obedgyamfi/aular/core/internal/tools"
 )

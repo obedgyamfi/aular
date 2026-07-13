@@ -14,24 +14,38 @@
       {
         "title": "AULAR",
         "width": 1280,
-        "height": 820,
+        "height": 800,
         "minWidth": 900,
         "minHeight": 600,
         "decorations": false,
         "transparent": false,
         "dragDropEnabled": true,
-        "theme": null
+        "theme": null,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:8787 ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8080 ws://127.0.0.1:8080 ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "nsis", "dmg"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"],
-    "externalBin": ["binaries/aular-core"],
+    "targets": [
+      "deb",
+      "appimage",
+      "nsis",
+      "dmg"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/aular-core"
+    ],
     "shortDescription": "Your agent organization, on your machine",
     "longDescription": "AULAR runs a team of AI agents on your own computer, on your own model key. They delegate work to each other, hold a shared roadmap, and keep working while you watch."
   }

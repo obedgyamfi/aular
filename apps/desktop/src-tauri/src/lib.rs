@@ -6,7 +6,7 @@
 //! and boring is what you want in the part that can crash the whole app.
 
 mod license;
-mod menu;
+mod runtime;
 mod sidecar;
 
 use tauri::Manager;
@@ -17,8 +17,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_log::Builder::new().build())
         .manage(sidecar::Backend::default())
-        .menu(|app| menu::build(app))
-        .on_menu_event(|app, event| menu::on_menu_event(app, event.id().as_ref()))
+        .manage(sidecar::Gateway::default())
+        // No native menu: the window is undecorated and the ☰ menu in the
+        // title bar is the app's only menu. Setting one here renders a second
+        // menubar inside the window on Linux — two menus, one app.
         .setup(|app| {
             let licensed = license::is_licensed();
             log::info!(
@@ -27,11 +29,13 @@ pub fn run() {
                 licensed
             );
             sidecar::spawn(app.handle(), licensed)?;
+            sidecar::spawn_gateway(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 sidecar::shutdown(window.app_handle());
+                sidecar::shutdown_gateway(window.app_handle());
             }
         })
         .build(tauri::generate_context!())

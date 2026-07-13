@@ -19,9 +19,17 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
+rand = "0.9"
 tauri-plugin-log = "2"
 
 [features]
+# REQUIRED for any build that isn't `tauri dev`. Without it the webview loads
+# `devUrl` (the Vite server) instead of the embedded frontend — the app opens
+# on "Could not connect to localhost: Connection refused" with no other clue.
+# The tauri CLI passes this automatically; a raw `cargo build --release` does
+# not, which is exactly how we got bitten.
+custom-protocol = ["tauri/custom-protocol"]
+
 # Ship builds enable this; it flips the licence check on. The open shell
 # builds without it and runs the free engine.
 licensed = []

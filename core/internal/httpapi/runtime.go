@@ -69,9 +69,15 @@ func (s *Server) cronForConversation(ctx context.Context, conversationID string)
 func (s *Server) deliverTo(ctx context.Context, userID string, req aularadapter.InboundRequest) error {
 	client, err := s.adapters.ForUser(ctx, userID)
 	if err != nil {
+		log.Printf("deliver: no adapter for %s: %v", userID, err)
 		return err
 	}
-	return client.Deliver(ctx, req)
+	log.Printf("deliver: handing turn for conversation %s to the agent runtime", req.ConversationID)
+	if err := client.Deliver(ctx, req); err != nil {
+		log.Printf("deliver: runtime rejected the turn: %v", err)
+		return err
+	}
+	return nil
 }
 
 // runtimeForToken authenticates an /internal/* call: the token identifies

@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/obedgyamfi/aular/core/internal/agentspec"
+	"github.com/obedgyamfi/aular/core/agentspec"
 	"github.com/obedgyamfi/aular/core/internal/auth"
 	"github.com/obedgyamfi/aular/core/internal/messages"
 	"github.com/obedgyamfi/aular/core/internal/metering"
@@ -158,7 +158,7 @@ func (s *Server) handleInternalEdit(w http.ResponseWriter, r *http.Request) {
 		// Hand the finalized reply to the org engine. In the free shell this
 		// does nothing; with the org engine linked, this is where dispatch
 		// blocks are routed, reports relayed, and stalled work chased.
-		s.notifyEngine(ctx, msg.ConversationID, msg.ID, msg.Content, true)
+		s.notifyEngine(ctx, msg.ConversationID, msg.ID, msg.Content, req.Content, true)
 	}
 
 	s.hub.Broadcast(realtime.Event{
@@ -279,6 +279,7 @@ func (s *Server) handleInternalDeliver(w http.ResponseWriter, r *http.Request) {
 	}
 	// Strip any agent create/edit block from the visible message (the whole
 	// reply may be delivered at once when streaming is off).
+	rawContent := req.Content
 	specKind, blockJSON, cleaned, specComplete := agentspec.ExtractSpec(req.Content)
 	req.Content = cleaned
 	if req.ConversationID == "" || (req.Content == "" && len(req.Media) == 0 && !specComplete) {
@@ -344,7 +345,7 @@ func (s *Server) handleInternalDeliver(w http.ResponseWriter, r *http.Request) {
 	// arrives after the tool phase in the common case, and any tool that starts
 	// later is re-reported and settles at finalize.
 	s.settleToolCalls(ctx, req.ConversationID)
-	s.notifyEngine(ctx, req.ConversationID, msg.ID, req.Content, true)
+	s.notifyEngine(ctx, req.ConversationID, msg.ID, req.Content, rawContent, true)
 
 	if specComplete {
 		if confirmation := s.applyAgentBlock(ctx, req.ConversationID, msg.ID, specKind, blockJSON, cleaned); confirmation != "" {

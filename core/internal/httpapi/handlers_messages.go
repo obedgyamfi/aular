@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/obedgyamfi/aular/core/internal/agentspec"
+	"github.com/obedgyamfi/aular/core/agentspec"
 	"github.com/obedgyamfi/aular/core/internal/infra/aularadapter"
 	"github.com/obedgyamfi/aular/core/internal/messages"
 	"github.com/obedgyamfi/aular/core/internal/metering"

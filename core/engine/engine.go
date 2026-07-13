@@ -63,7 +63,14 @@ type Turn struct {
 	ConversationID string
 	AgentProfileID string
 	MessageID      string
-	Content        string
+	// Content is what the user sees: structured blocks stripped out.
+	Content string
+	// Raw is the reply as the agent actually wrote it, blocks and all. The
+	// shell hides blocks from the chat bubble; the engine still needs them,
+	// because they ARE the organization — dispatch assignments, documents for
+	// the knowledge bank. Strip them before the engine sees them and delegation
+	// silently never happens.
+	Raw string
 	// Final is true on the last segment of a streamed reply — the point at
 	// which the reply can be acted on as a whole.
 	Final bool
