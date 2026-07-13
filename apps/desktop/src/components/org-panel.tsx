@@ -1,12 +1,13 @@
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 
-import { AddAgentModal } from "~/components/add-agent-modal";
+import { Avatar } from "~/components/avatar";
+import { compact, DualAreaChart, type ChartPoint } from "~/components/charts";
+import { OrgBuild } from "~/components/org-build";
 import { OrgChart } from "~/components/org-chart";
 import { OrgDocs } from "~/components/org-docs";
-import { TokenChart } from "~/components/token-chart";
 import { api } from "~/lib/api";
 import { state } from "~/lib/store";
-import type { AgentTokenUsage, DailyTokens } from "~/lib/types";
+import type { AgentTokenUsage } from "~/lib/types";
 
 type Tab = "overview" | "chart" | "docs" | "build";
 
@@ -35,12 +36,12 @@ export function OrgPanel() {
           Knowledge bank
         </TabBtn>
         <TabBtn active={tab() === "build"} onClick={() => setTab("build")}>
-          Build
+          Hire
         </TabBtn>
       </div>
 
       {/* The chart and the bank are workspaces: they take the whole pane and
-          manage their own scrolling. Overview and Build are reading — a measured
+          manage their own scrolling. Overview and Hire are reading — a measured
           column, centered. */}
       <Show when={tab() === "chart"}>
         <OrgChart />
@@ -56,7 +57,7 @@ export function OrgPanel() {
               <Overview />
             </Show>
             <Show when={tab() === "build"}>
-              <Build />
+              <OrgBuild />
             </Show>
           </div>
         </div>
@@ -84,184 +85,161 @@ function TabBtn(props: { active: boolean; onClick: () => void; children: any }) 
   );
 }
 
-/** Grow the team. The same three routes as the hire dialog, given room. */
-function Build() {
-  const [open, setOpen] = createSignal(false);
-  return (
-    <div class="flex flex-col gap-4">
-      <div class="flex flex-col gap-0.5">
-        <h2 class="text-[13px] font-medium text-v2-text-text-base">Build your org</h2>
-        <p class="text-[11.5px] text-v2-text-text-muted">
-          Hire from a role, describe what you need to AULAR, or write an agent
-          yourself.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        class="w-fit rounded-md bg-v2-background-bg-accent px-3 py-2 text-[12px] font-medium text-v2-text-text-inverse"
-      >
-        Hire an agent
-      </button>
-      <Show when={open()}>
-        <AddAgentModal onClose={() => setOpen(false)} />
-      </Show>
-    </div>
-  );
-}
-
 function Overview() {
   const [tokens] = createResource(() => api.getTokenUsage().catch(() => null));
   const [daily] = createResource(() => api.getAnalyticsDaily(14).catch(() => null));
 
   const totals = () => tokens()?.totals;
 
+  // The API returns only days that had activity; pad the window out to its
+  // full span or three busy days stretch and the shape of the work lies.
+  const tokenDays = createMemo<ChartPoint[]>(() =>
+    padDays(14, daily()?.tokens ?? [], (d) => ({
+      a: d.input_tokens,
+      b: d.output_tokens,
+    })),
+  );
+  const messageDays = createMemo<ChartPoint[]>(() =>
+    padDays(14, daily()?.messages ?? [], (d) => ({
+      a: d.user,
+      b: d.agent,
+    })),
+  );
+
+  /** The gateway prices turns only when the model config carries rates, so
+   *  cost earns a tile the moment it's real and stays out of the way at $0. */
+  const cost = () =>
+    (daily()?.tokens ?? []).reduce((s, d) => s + (d.cost_usd || 0), 0);
+
   return (
     <div class="flex flex-col gap-5">
       <div class="flex flex-col gap-0.5">
         <h2 class="text-[13px] font-medium text-v2-text-text-base">Overview</h2>
         <p class="text-[11.5px] text-v2-text-text-muted">
-          What your agents have actually done, and what it cost.
+          All-time totals; the charts cover the last 14 days.
         </p>
       </div>
 
-      {/* KPI row — the prototype's tiles, same units. */}
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="Tokens in" value={fmt(totals()?.input_tokens)} sub="all-time" />
-        <Tile label="Tokens out" value={fmt(totals()?.output_tokens)} sub="all-time" />
-        <Tile label="Tool calls" value={fmt(totals()?.tool_calls)} sub="all-time" />
-        <Tile label="Sessions" value={fmt(totals()?.sessions)} sub="all-time" />
-        <Tile label="Agents" value={String(state.agents.length)} sub="on staff" />
+        <Tile label="Tokens in" value={compact(totals()?.input_tokens ?? 0)} />
+        <Tile label="Tokens out" value={compact(totals()?.output_tokens ?? 0)} />
+        <Tile label="Tool calls" value={compact(totals()?.tool_calls ?? 0)} />
+        <Tile label="Sessions" value={compact(totals()?.sessions ?? 0)} />
+        <Show
+          when={cost() > 0}
+          fallback={<Tile label="Agents" value={String(state.agents.length)} sub="on staff" />}
+        >
+          <Tile label="Model cost" value={`$${cost().toFixed(2)}`} sub="last 14 days" />
+        </Show>
       </div>
 
-      <TokensPerDay days={daily()?.tokens ?? []} />
-
-      <TokensByAgent rows={tokens()?.per_agent ?? []} />
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Tokens per day">
+          <Show
+            when={(daily()?.tokens ?? []).length}
+            fallback={<Empty note="No sessions recorded yet." />}
+          >
+            <DualAreaChart
+              points={tokenDays()}
+              aLabel="Tokens in"
+              bLabel="Tokens out"
+              stacked
+            />
+          </Show>
+        </Card>
+        <Card title="Messages per day">
+          <Show
+            when={(daily()?.messages ?? []).length}
+            fallback={<Empty note="No messages yet." />}
+          >
+            <DualAreaChart points={messageDays()} aLabel="You" bLabel="Agents" />
+          </Show>
+        </Card>
+      </div>
 
       <AgentTable rows={tokens()?.per_agent ?? []} />
     </div>
   );
 }
 
-function fmt(n?: number): string {
-  if (!n) return "0";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
-  return String(n);
+/** Fill a trailing window of days, zeroing the quiet ones. */
+function padDays<T extends { date: string }>(
+  window: number,
+  days: T[],
+  pick: (d: T) => { a: number; b: number },
+): ChartPoint[] {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const out: ChartPoint[] = [];
+  for (let i = window - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const hit = byDate.get(key);
+    out.push({ date: key, ...(hit ? pick(hit) : { a: 0, b: 0 }) });
+  }
+  return out;
 }
 
-function Tile(props: { label: string; value: string; sub: string }) {
+function Tile(props: { label: string; value: string; sub?: string }) {
   return (
     <div class="flex flex-col gap-1 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 px-3 py-2.5">
-      <span class="text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
-        {props.label}
-      </span>
-      <span class="font-mono text-[18px] leading-none text-v2-text-text-base">
+      <span class="text-[10.5px] text-v2-text-text-faint">{props.label}</span>
+      <span class="text-[19px] font-semibold leading-none tracking-[-0.01em] text-v2-text-text-base">
         {props.value}
       </span>
-      <span class="text-[10px] text-v2-text-text-faint">{props.sub}</span>
+      <Show when={props.sub}>
+        <span class="text-[10px] text-v2-text-text-faint">{props.sub}</span>
+      </Show>
     </div>
   );
 }
 
-/** Stacked daily bars — input and output tokens, as in the prototype. */
-function TokensPerDay(props: { days: DailyTokens[] }) {
-  // The API returns only days that had activity. Pad the window out to its full
-  // span, or three busy days stretch into three fat bars and the chart lies
-  // about the shape of the work.
-  const series = createMemo<DailyTokens[]>(() => {
-    const WINDOW = 14;
-    const byDate = new Map(props.days.map((d) => [d.date, d]));
-    const out: DailyTokens[] = [];
-    for (let i = WINDOW - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setUTCDate(d.getUTCDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      out.push(
-        byDate.get(key) ?? {
-          date: key,
-          input_tokens: 0,
-          output_tokens: 0,
-          tool_calls: 0,
-          sessions: 0,
-          cost_usd: 0,
-        },
-      );
-    }
-    return out;
-  });
-
-  return (
-    <Card title="Tokens per day" subtitle="last 14 days">
-      <Show
-        when={props.days.length}
-        fallback={<Empty note="No sessions recorded yet." />}
-      >
-        <TokenChart days={series()} />
-      </Show>
-    </Card>
-  );
-}
-
-/** Horizontal bars — who is spending the tokens. */
-function TokensByAgent(props: { rows: AgentTokenUsage[] }) {
+/**
+ * The full data view: every agent, their token split drawn in the same two
+ * series colors as the charts, and the exact numbers beside it.
+ */
+function AgentTable(props: { rows: AgentTokenUsage[] }) {
   const total = (r: AgentTokenUsage) => r.input_tokens + r.output_tokens;
+  const sorted = createMemo(() => [...props.rows].sort((x, y) => total(y) - total(x)));
   const max = () => Math.max(1, ...props.rows.map(total));
 
   return (
-    <Card title="Tokens by agent" subtitle="all-time">
+    <Card title="By agent" subtitle="all-time">
       <Show when={props.rows.length} fallback={<Empty note="No agent activity yet." />}>
-        <div class="flex flex-col gap-2">
-          <For each={props.rows}>
-            {(r) => (
-              <div class="flex items-center gap-3">
-                <span class="w-[90px] shrink-0 truncate text-[12px] text-v2-text-text-base">
-                  {r.agent_name || "—"}
-                </span>
-                <span class="h-2 flex-1 overflow-hidden rounded-full bg-v2-background-bg-layer-02">
-                  <span
-                    class="block h-full rounded-full bg-v2-icon-icon-accent"
-                    style={{ width: `${(total(r) / max()) * 100}%` }}
-                  />
-                </span>
-                <span class="w-[60px] shrink-0 text-right font-mono text-[11px] text-v2-text-text-muted">
-                  {fmt(total(r))}
-                </span>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-    </Card>
-  );
-}
-
-function AgentTable(props: { rows: AgentTokenUsage[] }) {
-  return (
-    <Card title="Per-agent performance" subtitle="tokens, tool calls, sessions">
-      <Show when={props.rows.length} fallback={<Empty note="Nothing to report yet." />}>
         <div class="overflow-x-auto">
           <table class="w-full text-[12px]">
             <thead>
               <tr class="text-left text-[10px] uppercase tracking-[0.08em] text-v2-text-text-faint">
                 <th class="pb-2 pr-3 font-medium">Agent</th>
+                <th class="w-[30%] pb-2 pr-3 font-medium">Tokens</th>
                 <th class="pb-2 pr-3 text-right font-medium">In</th>
                 <th class="pb-2 pr-3 text-right font-medium">Out</th>
                 <th class="pb-2 pr-3 text-right font-medium">Tools</th>
                 <th class="pb-2 text-right font-medium">Sessions</th>
               </tr>
             </thead>
-            <tbody class="font-mono text-v2-text-text-muted">
-              <For each={props.rows}>
+            <tbody class="tabular-nums text-v2-text-text-muted">
+              <For each={sorted()}>
                 {(r) => (
                   <tr class="border-t border-v2-border-border-muted">
-                    <td class="py-1.5 pr-3 font-sans text-v2-text-text-base">
-                      {r.agent_name || "—"}
+                    <td class="py-2 pr-3">
+                      <span class="flex items-center gap-2 text-v2-text-text-base">
+                        <Avatar name={r.agent_name || "?"} size={18} />
+                        {r.agent_name || "—"}
+                      </span>
                     </td>
-                    <td class="py-1.5 pr-3 text-right">{fmt(r.input_tokens)}</td>
-                    <td class="py-1.5 pr-3 text-right">{fmt(r.output_tokens)}</td>
-                    <td class="py-1.5 pr-3 text-right">{fmt(r.tool_calls)}</td>
-                    <td class="py-1.5 text-right">{r.sessions}</td>
+                    <td class="py-2 pr-3">
+                      <SplitBar
+                        a={r.input_tokens}
+                        b={r.output_tokens}
+                        max={max()}
+                        title={`${compact(r.input_tokens)} in · ${compact(r.output_tokens)} out`}
+                      />
+                    </td>
+                    <td class="py-2 pr-3 text-right">{compact(r.input_tokens)}</td>
+                    <td class="py-2 pr-3 text-right">{compact(r.output_tokens)}</td>
+                    <td class="py-2 pr-3 text-right">{compact(r.tool_calls)}</td>
+                    <td class="py-2 text-right">{r.sessions}</td>
                   </tr>
                 )}
               </For>
@@ -270,6 +248,33 @@ function AgentTable(props: { rows: AgentTokenUsage[] }) {
         </div>
       </Show>
     </Card>
+  );
+}
+
+/** An in/out split bar in the chart's series colors, with a 2px surface gap. */
+function SplitBar(props: { a: number; b: number; max: number; title: string }) {
+  const pct = (v: number) => (v / props.max) * 100;
+  return (
+    <span class="flex h-[6px] w-full items-center gap-[2px]" title={props.title}>
+      <span
+        class="h-full rounded-l-full"
+        classList={{ "rounded-r-full": props.b === 0 }}
+        style={{
+          width: `${Math.max(pct(props.a), props.a > 0 ? 1 : 0)}%`,
+          background: "var(--viz-1)",
+          opacity: 0.85,
+        }}
+      />
+      <span
+        class="h-full rounded-r-full"
+        classList={{ "rounded-l-full": props.a === 0 }}
+        style={{
+          width: `${Math.max(pct(props.b), props.b > 0 ? 1 : 0)}%`,
+          background: "var(--viz-2)",
+          opacity: 0.85,
+        }}
+      />
+    </span>
   );
 }
 

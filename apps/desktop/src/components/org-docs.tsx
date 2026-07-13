@@ -1,30 +1,35 @@
-import { createEffect, createResource, createSignal, For, Show } from "solid-js";
+import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { Avatar } from "~/components/avatar";
 import { confirmDialog } from "~/components/confirm";
+import { Markdown } from "~/components/markdown";
 import { api } from "~/lib/api";
 import { state } from "~/lib/store";
 import type { OrgDocument } from "~/lib/types";
 
 /**
- * The knowledge bank — ported from the prototype's OrgDocs.
+ * The knowledge bank — the organization's memory.
  *
- * The organization's memory: the roadmap everything serves, the specs and
- * processes the whole team works from, and each agent's role document. All of it
- * is injected into agent prompts, and agents write back here themselves with doc
- * blocks — so this is a window onto a store they share, not a folder of notes.
+ * The roadmap everything serves, the specs and processes the whole team works
+ * from, and each agent's role document. All of it is injected into agent
+ * prompts, and agents write back here themselves — so this is a window onto a
+ * store they share, not a folder of notes.
  *
- * Two panes, like the prototype: the bank on the left, one document open on the
- * right. A document you can only preview is a document you won't maintain.
+ * Two panes: the bank on the left, one document open on the right. A document
+ * opens *reading* — rendered, like the page it is — and an Edit button turns it
+ * back into text. The old way (always-on markdown editor, native dropdowns)
+ * made the org's memory feel like editing a config file.
  */
+const KINDS = ["doc", "spec", "process", "roadmap", "report"] as const;
+
 export function OrgDocs() {
   const [docs, { refetch }] = createResource(() =>
-    api.listDocuments().then((d) => d ?? []),
+    api.listDocuments().then((d) => d ?? []).catch(() => []),
   );
 
   const [selected, setSelected] = createSignal<OrgDocument | null>(null);
-  const [creating, setCreating] = createSignal(false);
+  const [editing, setEditing] = createSignal(false);
   const [error, setError] = createSignal("");
   let picker: HTMLInputElement | undefined;
 
@@ -39,7 +44,7 @@ export function OrgDocs() {
 
   const open = (d: OrgDocument) => {
     setSelected(d);
-    setCreating(false);
+    setEditing(false);
   };
 
   /** Markdown you already wrote belongs in the bank without a copy-paste. */
@@ -88,7 +93,7 @@ export function OrgDocs() {
             title="New document"
             onClick={() => {
               setSelected(null);
-              setCreating(true);
+              setEditing(true);
             }}
             class="flex size-6 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base"
           >
@@ -152,7 +157,7 @@ export function OrgDocs() {
       </aside>
 
       <Show
-        when={creating() || selected()}
+        when={editing() || selected()}
         fallback={
           <div class="flex min-w-0 flex-1 items-center justify-center px-8 text-center">
             <div class="max-w-[440px]">
@@ -169,20 +174,36 @@ export function OrgDocs() {
           </div>
         }
       >
-        {/* Keyed on the open document: the editor holds a draft, and a draft of
-            one document must never leak into the next one you click. */}
-        <DocEditor
-          doc={selected()}
-          onSaved={async (d) => {
-            await refetch();
-            open(d);
-          }}
-          onDeleted={async () => {
-            await refetch();
-            setSelected(null);
-            setCreating(false);
-          }}
-        />
+        <Show
+          when={editing()}
+          fallback={
+            <DocView
+              doc={selected()!}
+              scopeName={
+                selected()!.agent_profile_id
+                  ? agentName(selected()!.agent_profile_id)
+                  : undefined
+              }
+              onEdit={() => setEditing(true)}
+              onDeleted={async () => {
+                await refetch();
+                setSelected(null);
+              }}
+            />
+          }
+        >
+          <DocEditor
+            doc={selected()}
+            onSaved={async (d) => {
+              await refetch();
+              open(d);
+            }}
+            onCancel={() => {
+              // A new draft has nothing to fall back to; a doc reopens as a page.
+              setEditing(false);
+            }}
+          />
+        </Show>
       </Show>
     </div>
   );
@@ -212,10 +233,10 @@ function DocRow(props: {
     >
       <span class="truncate text-[12px] text-v2-text-text-base">{d().title}</span>
       <span class="truncate text-[10.5px] text-v2-text-text-faint">
-        {d().kind}
+        {cap(d().kind)}
         {props.subtitle ? ` · ${props.subtitle}` : ""} ·{" "}
         {new Date(d().updated_at).toLocaleDateString([], {
-          month: "numeric",
+          month: "short",
           day: "numeric",
         })}
       </span>
@@ -223,11 +244,108 @@ function DocRow(props: {
   );
 }
 
-/** One document, open: title, kind, scope, and the markdown itself. */
+/** A document, being read: a page, not a form. */
+function DocView(props: {
+  doc: OrgDocument;
+  scopeName?: string;
+  onEdit: () => void;
+  onDeleted: () => void;
+}) {
+  const [error, setError] = createSignal("");
+
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: `Delete “${props.doc.title}”?`,
+      message:
+        "Your agents read the knowledge bank before every turn. Removing this takes it out of their prompts.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deleteDocument(props.doc.id);
+      props.onDeleted();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  return (
+    <div class="flex min-w-0 flex-1 flex-col overflow-y-auto">
+      <div class="mx-auto w-full max-w-[760px] px-8 py-6">
+        <div class="flex items-start gap-3">
+          <h1 class="min-w-0 flex-1 text-[17px] font-semibold leading-snug text-v2-text-text-base">
+            {props.doc.title}
+          </h1>
+          <div class="flex shrink-0 items-center gap-1 pt-0.5">
+            <button
+              type="button"
+              onClick={props.onEdit}
+              class="flex items-center gap-1.5 rounded-md border border-v2-border-border-base px-2.5 py-1.5 text-[12px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+            >
+              <Icon name="pencil-line" size="small" />
+              Edit
+            </button>
+            <button
+              type="button"
+              title="Delete document"
+              onClick={remove}
+              class="flex size-8 items-center justify-center rounded-md text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-state-fg-danger"
+            >
+              <Icon name="trash" size="small" />
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 pt-2.5 text-[11px] text-v2-text-text-faint">
+          <KindPill kind={props.doc.kind} />
+          <Show
+            when={props.scopeName}
+            fallback={<span class="text-v2-text-text-muted">Org-wide</span>}
+          >
+            <span class="flex items-center gap-1.5 text-v2-text-text-muted">
+              <Avatar name={props.scopeName!} size={15} />
+              {props.scopeName}
+            </span>
+          </Show>
+          <span>·</span>
+          <span>
+            Updated{" "}
+            {new Date(props.doc.updated_at).toLocaleString([], {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+        </div>
+
+        <Show when={error()}>
+          <p class="pt-3 text-[11.5px] text-v2-state-fg-danger">{error()}</p>
+        </Show>
+
+        <div class="pt-5 text-[13px]">
+          <Show
+            when={props.doc.content.trim()}
+            fallback={
+              <p class="text-[12px] italic text-v2-text-text-faint">
+                Empty — edit it to give your agents something to read.
+              </p>
+            }
+          >
+            <Markdown content={props.doc.content} />
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The same document, being written. */
 function DocEditor(props: {
   doc: OrgDocument | null;
   onSaved: (d: OrgDocument) => void;
-  onDeleted: () => void;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = createSignal(props.doc?.title ?? "");
   const [kind, setKind] = createSignal(props.doc?.kind ?? "doc");
@@ -235,25 +353,6 @@ function DocEditor(props: {
   const [content, setContent] = createSignal(props.doc?.content ?? "");
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal("");
-
-  // Solid keeps this component mounted when you click a different row, so the
-  // draft has to follow the document. Without this you'd open the roadmap and
-  // find the last doc's text sitting in the editor, one Save away from
-  // overwriting it.
-  let loaded: string | undefined;
-  createEffect(() => {
-    const d = props.doc;
-    const id = d?.id ?? "__new__";
-    if (id === loaded) return;
-    loaded = id;
-    setTitle(d?.title ?? "");
-    setKind(d?.kind ?? "doc");
-    setScope(d?.agent_profile_id ?? "");
-    setContent(d?.content ?? "");
-    setError("");
-  });
-
-  const staff = () => state.agents.filter((a) => a.role !== "system");
 
   const save = async () => {
     if (!title().trim() || saving()) return;
@@ -269,103 +368,171 @@ function DocEditor(props: {
       props.onSaved(saved);
     } catch (e) {
       setError((e as Error).message);
-    } finally {
       setSaving(false);
-    }
-  };
-
-  const remove = async () => {
-    const doc = props.doc;
-    if (!doc) return;
-    const ok = await confirmDialog({
-      title: `Delete “${doc.title}”?`,
-      message:
-        "Your agents read the knowledge bank before every turn. Removing this takes it out of their prompts.",
-      confirmLabel: "Delete",
-      danger: true,
-    });
-    if (!ok) return;
-    try {
-      await api.deleteDocument(doc.id);
-      props.onDeleted();
-    } catch (e) {
-      setError((e as Error).message);
     }
   };
 
   return (
     <div class="flex min-w-0 flex-1 flex-col">
-      <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-v2-border-border-muted px-4 py-2">
-        <input
-          value={title()}
-          onInput={(e) => setTitle(e.currentTarget.value)}
-          placeholder="Document title"
-          class="min-w-[180px] flex-1 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12.5px] font-medium text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus"
-        />
+      <div class="shrink-0 border-b border-v2-border-border-muted px-6 py-3">
+        <div class="flex items-center gap-3">
+          <input
+            value={title()}
+            onInput={(e) => setTitle(e.currentTarget.value)}
+            placeholder="Document title"
+            class="min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
+          />
+          <div class="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={props.onCancel}
+              class="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!title().trim() || saving()}
+              class="rounded-md bg-v2-background-bg-accent px-3 py-1.5 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
+            >
+              {saving() ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
 
-        <select
-          value={kind()}
-          onChange={(e) => setKind(e.currentTarget.value)}
-          class={select}
-        >
-          <option value="doc">doc</option>
-          <option value="spec">spec</option>
-          <option value="process">process</option>
-          <option value="roadmap">roadmap</option>
-          <option value="report">report</option>
-        </select>
+        <div class="flex flex-wrap items-center gap-3 pt-2.5">
+          {/* What kind of page this is — five choices don't need a dropdown. */}
+          <div class="flex items-center gap-px overflow-hidden rounded-md border border-v2-border-border-muted">
+            <For each={KINDS}>
+              {(k) => (
+                <button
+                  type="button"
+                  onClick={() => setKind(k)}
+                  aria-pressed={kind() === k}
+                  class="px-2.5 py-1 text-[11px] transition-colors"
+                  classList={{
+                    "bg-v2-overlay-simple-overlay-pressed font-medium text-v2-text-text-base":
+                      kind() === k,
+                    "text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base":
+                      kind() !== k,
+                  }}
+                >
+                  {cap(k)}
+                </button>
+              )}
+            </For>
+          </div>
 
-        <select
-          value={scope()}
-          onChange={(e) => setScope(e.currentTarget.value)}
-          class={`${select} max-w-[160px]`}
-        >
-          <option value="">Org-wide</option>
-          <For each={staff()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
-        </select>
+          <ScopeMenu value={scope()} onChange={setScope} />
+        </div>
 
-        <button
-          type="button"
-          onClick={save}
-          disabled={!title().trim() || saving()}
-          class="rounded-md bg-v2-background-bg-accent px-3 py-1.5 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
-        >
-          {saving() ? "Saving…" : "Save"}
-        </button>
-
-        <Show when={props.doc}>
-          <button
-            type="button"
-            onClick={remove}
-            class="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-v2-state-fg-danger transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-          >
-            Delete
-          </button>
+        <Show when={error()}>
+          <p class="pt-2 text-[11.5px] text-v2-state-fg-danger">{error()}</p>
         </Show>
       </div>
-
-      <Show when={error()}>
-        <p class="px-4 pt-2 text-[11.5px] text-v2-state-fg-danger">{error()}</p>
-      </Show>
-
-      <Show when={props.doc}>
-        {(d) => (
-          <div class="flex items-center gap-2 px-4 pt-2 text-[10.5px] text-v2-text-text-faint">
-            <Avatar name={d().title} size={16} />
-            last updated {new Date(d().updated_at).toLocaleString()}
-          </div>
-        )}
-      </Show>
 
       <textarea
         value={content()}
         onInput={(e) => setContent(e.currentTarget.value)}
         placeholder="Markdown — the roadmap, a spec, a process. This text goes into your agents' prompts, so write what they must know."
-        class="m-4 min-h-0 flex-1 resize-none rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 p-4 font-mono text-[12px] leading-relaxed text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus"
+        class="min-h-0 flex-1 resize-none bg-transparent px-6 py-4 font-mono text-[12px] leading-relaxed text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
       />
     </div>
   );
 }
 
-const select =
-  "rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2 py-1.5 text-[11.5px] text-v2-text-text-base outline-none";
+/** Who reads this: the whole org, or one agent. A designed menu, not a <select>. */
+function ScopeMenu(props: { value: string; onChange: (id: string) => void }) {
+  const [open, setOpen] = createSignal(false);
+  let root: HTMLDivElement | undefined;
+
+  const onDown = (e: PointerEvent) => {
+    if (!root?.contains(e.target as Node)) setOpen(false);
+  };
+  document.addEventListener("pointerdown", onDown);
+  onCleanup(() => document.removeEventListener("pointerdown", onDown));
+
+  const staff = () => state.agents.filter((a) => a.role !== "system");
+  const current = () => state.agents.find((a) => a.id === props.value);
+
+  return (
+    <div ref={root} class="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open()}
+        class="flex items-center gap-1.5 rounded-md border border-v2-border-border-muted px-2.5 py-1 text-[11px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+      >
+        <Show when={current()} fallback={<span>Org-wide</span>}>
+          {(a) => (
+            <span class="flex items-center gap-1.5">
+              <Avatar name={a().name} size={14} />
+              {a().name}
+            </span>
+          )}
+        </Show>
+        <Icon name="chevron-down" size="small" />
+      </button>
+
+      <Show when={open()}>
+        <div class="absolute left-0 top-full z-40 mt-1 max-h-[240px] w-[200px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+          <ScopeItem
+            label="Org-wide"
+            active={!props.value}
+            onClick={() => {
+              props.onChange("");
+              setOpen(false);
+            }}
+          />
+          <For each={staff()}>
+            {(a) => (
+              <ScopeItem
+                label={a.name}
+                avatar
+                active={props.value === a.id}
+                onClick={() => {
+                  props.onChange(a.id);
+                  setOpen(false);
+                }}
+              />
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+function ScopeItem(props: {
+  label: string;
+  avatar?: boolean;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+    >
+      <Show when={props.avatar}>
+        <Avatar name={props.label} size={16} />
+      </Show>
+      <span class="min-w-0 flex-1 truncate">{props.label}</span>
+      <Show when={props.active}>
+        <Icon name="check-small" size="small" />
+      </Show>
+    </button>
+  );
+}
+
+function KindPill(props: { kind: string }) {
+  return (
+    <span class="rounded-full bg-v2-background-bg-layer-02 px-2 py-0.5 text-[10.5px] font-medium text-v2-text-text-muted">
+      {cap(props.kind)}
+    </span>
+  );
+}
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);

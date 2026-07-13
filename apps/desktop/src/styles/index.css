@@ -153,6 +153,23 @@
     }
   }
 
+  /* Chart series. Two fixed slots, validated (dataviz six checks) against the
+     card surface in both schemes: blue = what you feed the org (tokens in,
+     your messages), orange = what the agents produce (tokens out, replies).
+     The theme accent can't do this job — it changes hue between schemes. */
+  :root {
+    --viz-1: #2a78d6;
+    --viz-2: #d95926;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-scheme="light"]) {
+      --viz-1: #3987e5;
+    }
+  }
+  :root[data-scheme="dark"] {
+    --viz-1: #3987e5;
+  }
+
   .aular-think {
     animation: aular-think 1.25s ease-in-out infinite;
   }

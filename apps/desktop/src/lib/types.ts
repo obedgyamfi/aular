@@ -250,10 +250,11 @@ export interface DailyTokens {
   cost_usd: number;
 }
 
+/** Mirrors the API: GET /analytics/daily → messages[] uses `user`/`agent`. */
 export interface DailyMessages {
   date: string;
-  agent_messages: number;
-  user_messages: number;
+  user: number;
+  agent: number;
 }
 
 export interface AnalyticsDaily {
