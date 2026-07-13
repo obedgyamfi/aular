@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { Markdown } from "~/components/markdown";
@@ -44,12 +44,25 @@ export function WorkPanel() {
     return items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   });
 
-  let bottom: HTMLDivElement | undefined;
-  createMemo(() => {
+  let scroller: HTMLDivElement | undefined;
+  const [atBottom, setAtBottom] = createSignal(true);
+
+  // Follow the work as it happens — unless you've scrolled up to read something,
+  // in which case yanking the view away mid-sentence is the last thing you want.
+  createEffect(() => {
     feed().length;
     activeWorking();
-    queueMicrotask(() => bottom?.scrollIntoView({ block: "end" }));
+    if (!atBottom()) return;
+    queueMicrotask(() => {
+      scroller?.scrollTo({ top: scroller.scrollHeight });
+    });
   });
+
+  const onScroll = () => {
+    if (!scroller) return;
+    const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    setAtBottom(distance < 120);
+  };
 
   return (
     <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
@@ -72,8 +85,8 @@ export function WorkPanel() {
               <span class="text-[11px] text-v2-text-text-weak">work session</span>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-y-auto">
-              <div class="mx-auto flex w-full max-w-[860px] flex-col px-6 py-5">
+            <div ref={scroller} onScroll={onScroll} class="min-h-0 flex-1 overflow-y-auto">
+              <div class="mx-auto flex w-full max-w-[860px] flex-col px-6 pb-8 pt-5">
                 <Show when={!feed().length}>
                   <p class="py-10 text-center text-[12px] text-v2-text-text-weak">
                     Nothing yet. This is where the agent's turns and every tool it
@@ -102,7 +115,6 @@ export function WorkPanel() {
                   </div>
                 </Show>
 
-                <div ref={bottom} />
               </div>
             </div>
           </>

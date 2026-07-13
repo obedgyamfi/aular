@@ -2,6 +2,7 @@ import { createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { Avatar } from "~/components/avatar";
+import { confirmDialog } from "~/components/confirm";
 import { Modal } from "~/components/modal";
 import { api } from "~/lib/api";
 import { settingsActions } from "~/lib/settings";
@@ -64,6 +65,14 @@ export function AgentInfoModal(props: { agent: Agent; onClose: () => void }) {
 
   const remove = async () => {
     if (busy()) return;
+    const ok = await confirmDialog({
+      title: `Remove ${agent().name}?`,
+      message:
+        "This deletes the agent and everything it has said. Work it already did — documents, reports — stays in the knowledge bank. This can't be undone.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await actions.deleteAgent(agent().id);
@@ -74,10 +83,43 @@ export function AgentInfoModal(props: { agent: Agent; onClose: () => void }) {
     }
   };
 
+  const footer = (
+    <div class="flex items-center justify-between gap-2">
+      <Show when={!isSystem()} fallback={<span />}>
+        <button
+          type="button"
+          onClick={remove}
+          disabled={busy()}
+          class="rounded-md px-3 py-1.5 text-[12px] text-v2-state-fg-danger transition-colors hover:bg-v2-overlay-simple-overlay-hover disabled:opacity-50"
+        >
+          Remove agent
+        </button>
+      </Show>
+
+      <div class="flex gap-2">
+        <button
+          type="button"
+          onClick={props.onClose}
+          class="rounded-md px-3 py-1.5 text-[12px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy() || !name().trim()}
+          class="rounded-md bg-v2-background-bg-accent px-3 py-1.5 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
+        >
+          {busy() ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <Modal title="" onClose={props.onClose} width={520}>
+    <Modal title="" onClose={props.onClose} width={520} footer={footer}>
       <div class="flex flex-col gap-4">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 pr-8">
           <Avatar name={name() || agent().name} size={44} />
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <input
@@ -87,15 +129,22 @@ export function AgentInfoModal(props: { agent: Agent; onClose: () => void }) {
               class={`${field} text-[14px] font-medium disabled:opacity-60`}
             />
           </div>
-          <button
-            type="button"
-            onClick={() => settingsActions.toggleMute(agent().id)}
-            title={settingsActions.isMuted(agent().id) ? "Unmute" : "Mute notifications"}
-            class="flex size-7 shrink-0 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-          >
-            <Icon name="bubble-5" size="small" />
-          </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => settingsActions.toggleMute(agent().id)}
+          class="flex w-fit items-center gap-1.5 rounded-md border border-v2-border-border-muted px-2.5 py-1 text-[11.5px] transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+          classList={{
+            "text-v2-text-text-base": settingsActions.isMuted(agent().id),
+            "text-v2-text-text-muted": !settingsActions.isMuted(agent().id),
+          }}
+        >
+          <Icon name="bubble-5" size="small" />
+          {settingsActions.isMuted(agent().id)
+            ? "Muted — notifications off"
+            : "Mute notifications"}
+        </button>
 
         <Show when={isSystem()}>
           <p class="rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-3 py-2 text-[11.5px] leading-relaxed text-v2-text-text-muted">
@@ -183,7 +232,7 @@ export function AgentInfoModal(props: { agent: Agent; onClose: () => void }) {
                   >
                     {t.name}
                     <Show when={isRisky(t)}>
-                      <span class="text-v2-text-text-danger" title="High risk">
+                      <span class="text-v2-state-fg-danger" title="High risk">
                         ●
                       </span>
                     </Show>
@@ -195,38 +244,9 @@ export function AgentInfoModal(props: { agent: Agent; onClose: () => void }) {
         </Field>
 
         <Show when={error()}>
-          <p class="text-[11.5px] text-v2-text-text-danger">{error()}</p>
+          <p class="text-[11.5px] text-v2-state-fg-danger">{error()}</p>
         </Show>
 
-        <div class="flex items-center justify-between gap-2 pt-1">
-          <Show when={!isSystem()}>
-            <button
-              type="button"
-              onClick={remove}
-              disabled={busy()}
-              class="rounded-md px-3 py-1.5 text-[12px] text-v2-text-text-danger transition-colors hover:bg-v2-overlay-simple-overlay-hover disabled:opacity-50"
-            >
-              Remove agent
-            </button>
-          </Show>
-          <div class="flex flex-1 justify-end gap-2">
-            <button
-              type="button"
-              onClick={props.onClose}
-              class="rounded-md px-3 py-1.5 text-[12px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={busy() || !name().trim()}
-              class="rounded-md bg-v2-background-bg-accent px-3 py-1.5 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
-            >
-              {busy() ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

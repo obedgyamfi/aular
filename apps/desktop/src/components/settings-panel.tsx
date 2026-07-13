@@ -166,7 +166,7 @@ function General() {
             {userEmail()}
           </span>
           <Show when={error()}>
-            <span class="text-[11px] text-v2-text-text-danger">{error()}</span>
+            <span class="text-[11px] text-v2-state-fg-danger">{error()}</span>
           </Show>
         </div>
 
@@ -361,7 +361,7 @@ function About() {
         <button
           type="button"
           onClick={() => void actions.signOut()}
-          class="shrink-0 rounded-md border border-v2-border-border-muted px-3 py-1.5 text-[12px] text-v2-text-text-danger transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+          class="shrink-0 rounded-md border border-v2-border-border-muted px-3 py-1.5 text-[12px] text-v2-state-fg-danger transition-colors hover:bg-v2-overlay-simple-overlay-hover"
         >
           Sign out
         </button>
@@ -415,7 +415,7 @@ function Toggle(props: { on: boolean; onChange: () => void }) {
       }}
     >
       <span
-        class="absolute top-[2px] size-3.5 rounded-full bg-white shadow-sm transition-all"
+        class="absolute top-[2px] size-3.5 rounded-full bg-[#ffffff] shadow-sm transition-all"
         classList={{ "left-[18px]": props.on, "left-[2px]": !props.on }}
       />
     </button>

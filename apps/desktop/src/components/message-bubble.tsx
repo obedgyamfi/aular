@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
+import { confirmDialog } from "~/components/confirm";
 import { Markdown } from "~/components/markdown";
 import { MediaAttachments } from "~/components/media-attachments";
 import { actions } from "~/lib/store";
@@ -34,6 +35,16 @@ export function MessageBubble(props: {
 
   const [copied, setCopied] = createSignal(false);
 
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: "Delete this message?",
+      message: "It disappears from the thread for good.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (ok) void actions.deleteMessage(m());
+  };
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(content());
@@ -46,22 +57,27 @@ export function MessageBubble(props: {
 
   // Platform notes — a dispatch landing, a report relayed, a doc saved. Neutral
   // by default; only genuine failures get the danger treatment.
+  //
+  // These are *not* pills. A dispatch can run to several hundred words, and
+  // `rounded-full` on a paragraph draws a giant lozenge with the text swimming
+  // inside it. The prototype's shape is right: a bordered card, left-aligned,
+  // wrapping like prose. Errors are the one thing that stays centered and loud.
   return (
     <Show
       when={!isSystem()}
       fallback={
         <div class="flex justify-center py-1.5">
-          <span
-            class="max-w-[80%] rounded-full px-3 py-1 text-center text-[11px] leading-relaxed"
+          <div
+            class="max-w-[86%] whitespace-pre-wrap break-words rounded-xl px-3.5 py-2 text-[12px] leading-relaxed"
             classList={{
-              "bg-v2-background-bg-layer-02 text-v2-text-text-muted":
+              "border border-v2-border-border-muted bg-v2-background-bg-layer-01 text-left text-v2-text-text-muted":
                 !isFailure(content()),
-              "bg-v2-background-bg-layer-02 text-v2-text-text-danger":
+              "border border-v2-state-border-danger bg-v2-state-bg-danger text-center text-v2-state-fg-danger":
                 isFailure(content()),
             }}
           >
             {content()}
-          </span>
+          </div>
         </div>
       }
     >
@@ -75,7 +91,7 @@ export function MessageBubble(props: {
             <Actions
               onReply={() => actions.setReplyTo(m())}
               onCopy={copy}
-              onDelete={() => void actions.deleteMessage(m())}
+              onDelete={remove}
               copied={copied()}
             />
           </Show>
@@ -95,7 +111,7 @@ export function MessageBubble(props: {
                 <div
                   class="mb-1.5 border-l-2 pl-2"
                   classList={{
-                    "border-white/40": isUser(),
+                    "border-[rgba(255,255,255,0.45)]": isUser(),
                     "border-v2-border-border-base": !isUser(),
                   }}
                 >
@@ -134,7 +150,7 @@ export function MessageBubble(props: {
             <Actions
               onReply={() => actions.setReplyTo(m())}
               onCopy={copy}
-              onDelete={() => void actions.deleteMessage(m())}
+              onDelete={remove}
               copied={copied()}
             />
           </Show>
@@ -189,7 +205,7 @@ function ActionButton(props: {
       class="flex size-6 items-center justify-center rounded transition-colors hover:bg-v2-overlay-simple-overlay-hover"
       classList={{
         "text-v2-icon-icon-muted hover:text-v2-icon-icon-base": !props.danger,
-        "text-v2-icon-icon-muted hover:text-v2-text-text-danger": props.danger,
+        "text-v2-icon-icon-muted hover:text-v2-state-fg-danger": props.danger,
       }}
     >
       {props.children}

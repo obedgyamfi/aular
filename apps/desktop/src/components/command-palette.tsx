@@ -4,7 +4,7 @@ import { Icon } from "@opencode-ai/ui/icon";
 import { Avatar } from "~/components/avatar";
 import { settingsActions } from "~/lib/settings";
 import { actions, state } from "~/lib/store";
-import { colorScheme, setColorScheme } from "~/theme/theme";
+import { resolvedScheme, setColorScheme } from "~/theme/theme";
 
 /**
  * The command palette — ⌘K.
@@ -30,6 +30,7 @@ type IconName =
   | "plus-small"
   | "sliders"
   | "bubble-5"
+  | "task"
   | "close";
 
 export function CommandPalette(props: { onClose: () => void; onHire: () => void }) {
@@ -65,6 +66,14 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
       run: () => actions.setRegister("org"),
     },
     {
+      id: "calendar",
+      label: "Go to Calendar",
+      hint: "What's scheduled this week",
+      icon: "task",
+      keywords: "schedule routines cron reminders week agenda",
+      run: () => actions.setRegister("calendar"),
+    },
+    {
       id: "settings",
       label: "Open Settings",
       icon: "settings-gear",
@@ -81,10 +90,13 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
     },
     {
       id: "theme",
-      label: colorScheme() === "dark" ? "Switch to light theme" : "Switch to dark theme",
+      // "System" resolves to whatever the OS is showing, so ask what's on
+      // screen — not what's stored, or the label offers you the theme you're in.
+      label:
+        resolvedScheme() === "dark" ? "Switch to light theme" : "Switch to dark theme",
       icon: "sliders",
       keywords: "appearance dark light mode",
-      run: () => setColorScheme(colorScheme() === "dark" ? "light" : "dark"),
+      run: () => setColorScheme(resolvedScheme() === "dark" ? "light" : "dark"),
     },
     {
       id: "mute",
@@ -173,7 +185,7 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[12vh]"
+      class="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(0,0,0,0.45)] pt-[12vh]"
       onClick={props.onClose}
     >
       <div

@@ -2,8 +2,10 @@ import { createSignal, onCleanup, onMount, Show } from "solid-js";
 
 import { AddAgentModal } from "~/components/add-agent-modal";
 import { AuthScreen } from "~/components/auth-screen";
+import { CalendarPanel } from "~/components/calendar-panel";
 import { ChatPane } from "~/components/chat-pane";
 import { CommandPalette } from "~/components/command-palette";
+import { ConfirmHost } from "~/components/confirm";
 import { WorkPanel } from "~/components/work-panel";
 import { OrgPanel } from "~/components/org-panel";
 import { Rail } from "~/components/rail";
@@ -92,6 +94,9 @@ export function App() {
             <Show when={state.register === "org"}>
               <OrgPanel />
             </Show>
+            <Show when={state.register === "calendar"}>
+              <CalendarPanel />
+            </Show>
             <Show when={state.register === "settings"}>
               <SettingsPanel />
             </Show>
@@ -108,6 +113,9 @@ export function App() {
           </Show>
         </Show>
       </main>
+
+      {/* One host for every "are you sure?" in the app. */}
+      <ConfirmHost />
     </div>
   );
 }

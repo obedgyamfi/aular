@@ -22,7 +22,6 @@ export function MessageList() {
   const agent = () => activeAgent();
 
   let scroller: HTMLDivElement | undefined;
-  let bottom: HTMLDivElement | undefined;
   const [atBottom, setAtBottom] = createSignal(true);
   const [newCount, setNewCount] = createSignal(0);
 
@@ -71,7 +70,10 @@ export function MessageList() {
     const n = messages().length;
     activeWorking();
     if (atBottom()) {
-      queueMicrotask(() => bottom?.scrollIntoView({ block: "end" }));
+      // Scroll the *container*, not a sentinel: scrollIntoView aligns the
+      // sentinel's edge with the viewport and leaves the feed's bottom padding
+      // below the fold, so the last bubble ends up flush against the composer.
+      queueMicrotask(() => scrollToEnd());
       setNewCount(0);
     } else if (n) {
       setNewCount((c) => c + 1);
@@ -86,8 +88,13 @@ export function MessageList() {
     if (near) setNewCount(0);
   };
 
+  const scrollToEnd = (behavior: ScrollBehavior = "auto") => {
+    if (!scroller) return;
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+  };
+
   const jump = () => {
-    bottom?.scrollIntoView({ behavior: "smooth", block: "end" });
+    scrollToEnd("smooth");
     setAtBottom(true);
     setNewCount(0);
   };
@@ -95,7 +102,7 @@ export function MessageList() {
   return (
     <div class="relative min-h-0 flex-1">
       <div ref={scroller} onScroll={onScroll} class="h-full overflow-y-auto">
-        <div class="mx-auto flex w-full max-w-[820px] flex-col px-4 py-5">
+        <div class="mx-auto flex w-full max-w-[820px] flex-col px-4 pb-8 pt-5">
           <For each={messages()}>
             {(m, i) => {
               const info = () => meta()[i()]!;
@@ -198,7 +205,6 @@ export function MessageList() {
             </div>
           </Show>
 
-          <div ref={bottom} />
         </div>
       </div>
 

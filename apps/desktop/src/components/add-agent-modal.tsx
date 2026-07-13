@@ -190,7 +190,7 @@ function Describe(props: { onClose: () => void }) {
       />
 
       <Show when={!systemAgent()}>
-        <p class="text-[11.5px] text-v2-text-text-danger">
+        <p class="text-[11.5px] text-v2-state-fg-danger">
           The AULAR system agent isn't available.
         </p>
       </Show>
@@ -322,7 +322,7 @@ const field =
 function Errors(props: { error: string }) {
   return (
     <Show when={props.error}>
-      <p class="flex items-center gap-1.5 text-[11.5px] text-v2-text-text-danger">
+      <p class="flex items-center gap-1.5 text-[11.5px] text-v2-state-fg-danger">
         <Icon name="warning" size="small" />
         {props.error}
       </p>

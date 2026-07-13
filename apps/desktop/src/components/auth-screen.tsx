@@ -112,7 +112,7 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
           </Show>
 
           <Show when={error()}>
-            <p class="text-[12px] text-v2-text-text-danger">{error()}</p>
+            <p class="text-[12px] text-v2-state-fg-danger">{error()}</p>
           </Show>
 
           <button

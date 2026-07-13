@@ -19,7 +19,7 @@ import type {
  * and REST both write here, and keeping per-agent view state (unread, preview,
  * typing) separate from the message log is what stops them fighting.
  */
-export type Register = "chat" | "work" | "org" | "settings";
+export type Register = "chat" | "work" | "org" | "calendar" | "settings";
 
 /** The settings section to land on — set by whatever sent you there. */
 export type SettingsSection =
@@ -142,6 +142,64 @@ async function replay(index: number) {
   } finally {
     replaying = false;
   }
+}
+
+/**
+ * Insert or merge a message into a thread, keeping it in time order.
+ *
+ * Events can arrive out of order (a streamed `message.updated` can beat the
+ * `message.created` it belongs to), and the same message can arrive twice — via
+ * the POST response and again over the socket. Both cases land here: match on
+ * id, merge if present, insert in the right place if not.
+ */
+function upsertMessage(convoId: string, msg: Message) {
+  set(
+    produce((s: State) => {
+      const list = s.messages[convoId] ?? (s.messages[convoId] = []);
+      const i = list.findIndex((m) => m.id === msg.id);
+      if (i !== -1) {
+        list[i] = { ...list[i]!, ...msg };
+        return;
+      }
+      const at = Date.parse(msg.created_at);
+      let j = list.length;
+      while (j > 0 && Date.parse(list[j - 1]!.created_at) > at) j--;
+      list.splice(j, 0, msg);
+    }),
+  );
+}
+
+/**
+ * A conversation is only "working" while the server keeps saying so. If a
+ * gateway dies mid-turn the activity ping just stops, and without this the row
+ * would sit on "typing…" forever. Every ping re-arms it; a reply clears it.
+ */
+const ACTIVITY_TTL_MS = 12_000;
+const activityTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+function armActivityTimeout(convoId: string) {
+  clearTimeout(activityTimers[convoId]);
+  activityTimers[convoId] = setTimeout(() => {
+    set("working", convoId, false);
+    delete activityTimers[convoId];
+  }, ACTIVITY_TTL_MS);
+}
+
+function clearWorking(convoId: string) {
+  clearTimeout(activityTimers[convoId]);
+  delete activityTimers[convoId];
+  set("working", convoId, false);
+}
+
+/** The chat list's subtitle. An older event must never overwrite a newer one. */
+function bumpPreview(agentId: string, msg: Message) {
+  const current = state.preview[agentId];
+  if (current && current.at > msg.created_at) return;
+  set("preview", agentId, {
+    text: msg.content,
+    at: msg.created_at,
+    sender: msg.sender_type,
+  });
 }
 
 /** Agent replies, for anything that needs to react to them (notifications). */
@@ -271,7 +329,15 @@ export const actions = {
     set("unread", agentId, 0);
   },
 
-  /** Send a turn. The reply arrives over the socket, not in the response. */
+  /**
+   * Send a turn.
+   *
+   * The reply arrives over the socket, but *your* message must not wait for it:
+   * the POST already returns the stored message, so it goes into the thread as
+   * soon as it exists. Anything else means typing into a void whenever the
+   * socket is slow — or, if it's down, until something else happens to refetch.
+   * The realtime `message.created` for the same id is a no-op (deduped).
+   */
   async send(content: string) {
     const agentId = state.activeAgentId;
     if (!agentId) return;
@@ -283,9 +349,11 @@ export const actions = {
 
     set({ replyTo: null, attachment: null });
     set("working", convoId, true);
+    armActivityTimeout(convoId);
 
     try {
-      await api.sendMessage(convoId, content, replyTo, media);
+      const { user_message } = await api.sendMessage(convoId, content, replyTo, media);
+      if (user_message) upsertMessage(convoId, user_message);
     } catch (e) {
       set("working", convoId, false);
       set("error", (e as Error).message);
@@ -354,28 +422,28 @@ function handleEvent(e: RealtimeEvent) {
     case "message.created": {
       const msg = e.data as Message;
       if (!convoId) return;
-      set(
-        produce((s: State) => {
-          const list = s.messages[convoId] ?? (s.messages[convoId] = []);
-          if (!list.some((m) => m.id === msg.id)) list.push(msg);
-          if (msg.sender_type === "agent") s.working[convoId] = false;
 
-          const agentId = s.agentOf[convoId];
-          if (agentId) {
-            s.preview[agentId] = {
-              text: msg.content,
-              at: msg.created_at,
-              sender: msg.sender_type,
-            };
-            if (msg.sender_type !== "user" && s.activeAgentId !== agentId) {
-              s.unread[agentId] = (s.unread[agentId] ?? 0) + 1;
-            }
+      upsertMessage(convoId, msg);
+
+      // Any output from the other side ends the turn for *that* conversation,
+      // whether or not you're looking at it.
+      if (msg.sender_type !== "user") clearWorking(convoId);
+
+      const agentId = state.agentOf[convoId];
+      if (agentId) {
+        bumpPreview(agentId, msg);
+        if (msg.sender_type !== "user") {
+          if (state.activeAgentId === agentId) {
+            // You're reading it as it lands, so tell the server that — otherwise
+            // it comes back unread on the next launch.
+            void api.markAgentRead(agentId).catch(() => {});
+          } else {
+            set("unread", agentId, (n) => (n ?? 0) + 1);
           }
-        }),
-      );
+        }
+      }
 
       if (msg.sender_type === "agent") {
-        const agentId = state.agentOf[convoId];
         for (const fn of replyListeners) fn(msg, agentId);
       }
       return;
@@ -384,27 +452,20 @@ function handleEvent(e: RealtimeEvent) {
     case "message.updated": {
       const msg = e.data as Message & { streaming?: boolean };
       if (!convoId) return;
-      set(
-        produce((s: State) => {
-          const list = s.messages[convoId] ?? (s.messages[convoId] = []);
-          const i = list.findIndex((m) => m.id === msg.id);
-          if (i === -1) list.push(msg);
-          else list[i] = { ...list[i]!, ...msg };
 
-          s.streaming[msg.id] = !!msg.streaming;
-          if (!msg.streaming) {
-            s.working[convoId] = false;
-            const agentId = s.agentOf[convoId];
-            if (agentId) {
-              s.preview[agentId] = {
-                text: msg.content,
-                at: msg.created_at,
-                sender: msg.sender_type,
-              };
-            }
-          }
-        }),
-      );
+      // core-api re-sends the full text of the message on every edit, so this
+      // is a replace, not an append. The cursor lives on until the finalizing
+      // edit arrives with streaming=false.
+      upsertMessage(convoId, msg);
+      set("streaming", msg.id, !!msg.streaming);
+
+      const agentId = state.agentOf[convoId];
+      if (agentId) bumpPreview(agentId, msg);
+
+      // A finalized reply means the agent is done — even if we never saw the
+      // message.created that normally clears this (a brief socket drop used to
+      // leave the row stuck on "typing…").
+      if (!msg.streaming) clearWorking(convoId);
       return;
     }
 
@@ -417,7 +478,12 @@ function handleEvent(e: RealtimeEvent) {
 
     case "agent.activity": {
       if (!convoId) return;
-      set("working", convoId, e.data?.state === "working");
+      if (e.data?.state === "working") {
+        set("working", convoId, true);
+        armActivityTimeout(convoId);
+      } else {
+        clearWorking(convoId);
+      }
       return;
     }
 

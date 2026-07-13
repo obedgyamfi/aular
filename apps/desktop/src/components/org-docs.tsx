@@ -1,6 +1,7 @@
 import { createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
+import { confirmDialog } from "~/components/confirm";
 import { Markdown } from "~/components/markdown";
 import { api } from "~/lib/api";
 import { state } from "~/lib/store";
@@ -68,6 +69,14 @@ export function OrgDocs() {
   };
 
   const remove = async (d: OrgDocument) => {
+    const ok = await confirmDialog({
+      title: `Delete “${d.title}”?`,
+      message:
+        "Your agents read the knowledge bank before every turn. Removing this takes it out of their prompts.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     await api.deleteDocument(d.id).catch(() => {});
     if (selected()?.id === d.id) setSelected(null);
     await refetch();
@@ -247,7 +256,7 @@ function DocRow(props: {
         type="button"
         aria-label="Delete document"
         onClick={() => props.onDelete(d())}
-        class="shrink-0 rounded p-1 text-v2-icon-icon-muted opacity-0 transition-opacity hover:text-v2-text-text-danger group-hover:opacity-100"
+        class="shrink-0 rounded p-1 text-v2-icon-icon-muted opacity-0 transition-opacity hover:text-v2-state-fg-danger group-hover:opacity-100"
       >
         <Icon name="trash" size="small" />
       </button>

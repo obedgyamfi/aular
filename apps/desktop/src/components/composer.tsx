@@ -277,8 +277,8 @@ function ContextMeter(props: { ctx: ConversationContext | null; draft: string })
                 class="block h-full rounded-full"
                 classList={{
                   "bg-v2-icon-icon-accent": pct() <= 60,
-                  "bg-amber-400": pct() > 60 && pct() <= 85,
-                  "bg-red-400": pct() > 85,
+                  "bg-v2-state-fg-warning": pct() > 60 && pct() <= 85,
+                  "bg-v2-state-fg-danger": pct() > 85,
                 }}
                 style={{ width: `${Math.max(3, pct())}%` }}
               />

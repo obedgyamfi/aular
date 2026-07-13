@@ -1,13 +1,21 @@
 import { onCleanup, Show } from "solid-js";
+import type { JSX } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
-/** A dialog. Escape closes, the scrim closes, and so does the ✕ — people look
- *  for one, and a scrim you have to guess at is not a control. */
+/**
+ * A dialog. Escape closes, the scrim closes, and so does the ✕ — people look for
+ * one, and a scrim you have to guess at is not a control.
+ *
+ * `footer` is rendered outside the scrolling body and stays visible. A long form
+ * (an agent's whole profile, say) otherwise pushes Save below the fold, which
+ * makes the dialog's primary action something you have to go looking for.
+ */
 export function Modal(props: {
   title?: string;
   width?: number;
   onClose: () => void;
-  children: any;
+  footer?: JSX.Element;
+  children: JSX.Element;
 }) {
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") props.onClose();
@@ -24,7 +32,7 @@ export function Modal(props: {
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        class="relative flex max-h-[85vh] w-full flex-col overflow-y-auto rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 p-5 shadow-2xl"
+        class="relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
         style={{ "max-width": `${props.width ?? 460}px` }}
       >
         <button
@@ -36,12 +44,20 @@ export function Modal(props: {
           <Icon name="close" size="small" />
         </button>
 
-        <Show when={props.title}>
-          <h2 class="mb-3 pr-8 text-[14px] font-medium text-v2-text-text-base">
-            {props.title}
-          </h2>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+          <Show when={props.title}>
+            <h2 class="mb-3 pr-8 text-[14px] font-medium text-v2-text-text-base">
+              {props.title}
+            </h2>
+          </Show>
+          {props.children}
+        </div>
+
+        <Show when={props.footer}>
+          <div class="shrink-0 border-t border-v2-border-border-muted bg-v2-background-bg-layer-01 px-5 py-3">
+            {props.footer}
+          </div>
         </Show>
-        {props.children}
       </div>
     </div>
   );

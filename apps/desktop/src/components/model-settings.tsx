@@ -222,7 +222,7 @@ export function ModelSettings() {
       </Show>
 
       <Show when={error()}>
-        <p class="text-[11.5px] text-v2-text-text-danger">{error()}</p>
+        <p class="text-[11.5px] text-v2-state-fg-danger">{error()}</p>
       </Show>
       <Show when={status()}>
         <p class="text-[11.5px] text-v2-text-text-accent">{status()}</p>

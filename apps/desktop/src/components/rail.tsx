@@ -7,11 +7,12 @@ import { actions, state, type Register } from "~/lib/store";
 const REGISTERS: {
   id: Register;
   label: string;
-  icon: "speech-bubble" | "terminal" | "subagent";
+  icon: "speech-bubble" | "terminal" | "subagent" | "task";
 }[] = [
   { id: "chat", label: "Chat", icon: "speech-bubble" },
   { id: "work", label: "Work", icon: "terminal" },
   { id: "org", label: "Organization", icon: "subagent" },
+  { id: "calendar", label: "Calendar", icon: "task" },
 ];
 
 export function Rail() {

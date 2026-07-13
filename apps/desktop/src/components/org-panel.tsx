@@ -38,22 +38,28 @@ export function OrgPanel() {
         </TabBtn>
       </div>
 
-      <div class="min-h-0 flex-1 overflow-y-auto">
-        <div class="mx-auto w-full max-w-[1000px] px-6 py-6">
-          <Show when={tab() === "overview"}>
-            <Overview />
-          </Show>
-          <Show when={tab() === "chart"}>
-            <OrgChart />
-          </Show>
-          <Show when={tab() === "docs"}>
-            <OrgDocs />
-          </Show>
-          <Show when={tab() === "build"}>
-            <Build />
-          </Show>
+      {/* The chart is a canvas: it wants the whole pane and scrolls itself, so
+          it doesn't end up as a small box scrolling inside a scrolling page.
+          The reading tabs are the opposite — a measured column. */}
+      <Show when={tab() === "chart"}>
+        <OrgChart />
+      </Show>
+
+      <Show when={tab() !== "chart"}>
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <div class="mx-auto w-full max-w-[1000px] px-6 py-6">
+            <Show when={tab() === "overview"}>
+              <Overview />
+            </Show>
+            <Show when={tab() === "docs"}>
+              <OrgDocs />
+            </Show>
+            <Show when={tab() === "build"}>
+              <Build />
+            </Show>
+          </div>
         </div>
-      </div>
+      </Show>
     </div>
   );
 }

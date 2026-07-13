@@ -2,6 +2,7 @@ import { createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { Avatar } from "~/components/avatar";
+import { confirmDialog } from "~/components/confirm";
 import { Modal } from "~/components/modal";
 import { api } from "~/lib/api";
 import type { Agent, Routine } from "~/lib/types";
@@ -69,6 +70,14 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
   };
 
   const remove = async (rt: Routine) => {
+    const ok = await confirmDialog({
+      title: `Delete “${rt.name}”?`,
+      message:
+        "This unschedules the routine and removes it. The agent stops doing this work.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     setBusyId(rt.id);
     try {
       await api.deleteRoutine(rt.id);
@@ -94,7 +103,7 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
         </div>
 
         <Show when={error()}>
-          <p class="text-[11.5px] text-v2-text-text-danger">{error()}</p>
+          <p class="text-[11.5px] text-v2-state-fg-danger">{error()}</p>
         </Show>
 
         <Show
@@ -140,7 +149,7 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
                       aria-label="Delete routine"
                       disabled={busyId() === rt.id}
                       onClick={() => void remove(rt)}
-                      class="flex size-7 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-danger disabled:opacity-50"
+                      class="flex size-7 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-state-fg-danger disabled:opacity-50"
                     >
                       <Icon name="trash" size="small" />
                     </button>
@@ -207,7 +216,7 @@ function Toggle(props: { on: boolean; disabled?: boolean; onClick: () => void })
       }}
     >
       <span
-        class="absolute top-[2px] size-3.5 rounded-full bg-white shadow-sm transition-all"
+        class="absolute top-[2px] size-3.5 rounded-full bg-[#ffffff] shadow-sm transition-all"
         classList={{ "left-[18px]": props.on, "left-[2px]": !props.on }}
       />
     </button>
