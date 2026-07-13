@@ -8,14 +8,18 @@ import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
 import { Onboarding } from "~/components/onboarding";
 import { RoutinesModal } from "~/components/routines-modal";
+import { WorkFeed } from "~/components/work-panel";
 import { actions, activeAgent, activeWorking, state } from "~/lib/store";
 
 /**
  * The chat register.
  *
- * The header carries the agent's identity and its live state — "typing…" while
- * it works, its role otherwise — and opens its profile. Clicking through to the
- * Work register shows the same conversation with every tool call it made.
+ * The header carries the agent's identity and its live state — working, or its
+ * role — and opens its profile. The two controls beside it are the two things
+ * you do with an agent that aren't talking: see what it does on a schedule
+ * (Routines), and watch how it works rather than what it concluded (the
+ * terminal view). That view is a lens on *this* conversation, not another
+ * place — same thread, same composer, different rendering.
  */
 export function ChatPane() {
   const [info, setInfo] = createSignal(false);
@@ -65,12 +69,12 @@ export function ChatPane() {
                   <Show
                     when={!activeWorking()}
                     fallback={
-                      <span class="text-[10.5px] leading-3 text-v2-text-text-accent">
-                        typing…
+                      <span class="aular-shimmer text-[10.5px] font-medium leading-3">
+                        working…
                       </span>
                     }
                   >
-                    <span class="truncate text-[10.5px] leading-3 text-v2-text-text-weak">
+                    <span class="truncate text-[10.5px] leading-3 text-v2-text-text-faint">
                       {prettyRole(agent().role)}
                     </span>
                   </Show>
@@ -89,18 +93,34 @@ export function ChatPane() {
                 Routines
               </button>
 
+              {/* The lens. Same conversation, drawn as talk or as work. */}
               <button
                 type="button"
-                onClick={() => actions.setRegister("work")}
-                title="Open the work session — every tool this agent used"
-                class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+                onClick={() => actions.toggleChatView()}
+                aria-pressed={state.chatView === "work"}
+                title={
+                  state.chatView === "work"
+                    ? "Back to the conversation"
+                    : "Show the work — every tool this agent used"
+                }
+                class="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+                classList={{
+                  "bg-v2-overlay-simple-overlay-pressed text-v2-icon-icon-accent":
+                    state.chatView === "work",
+                  "text-v2-icon-icon-muted hover:text-v2-icon-icon-base":
+                    state.chatView !== "work",
+                }}
               >
-                <Icon name="terminal" size="small" />
-                Work
+                <Icon
+                  name={state.chatView === "work" ? "speech-bubble" : "terminal"}
+                  size="small"
+                />
               </button>
             </header>
 
-            <MessageList />
+            <Show when={state.chatView === "chat"} fallback={<WorkFeed />}>
+              <MessageList />
+            </Show>
           </>
         )}
       </Show>

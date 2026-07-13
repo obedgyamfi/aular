@@ -241,17 +241,17 @@ export function ModelSettings() {
 }
 
 const field =
-  "w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak focus:border-v2-border-border-focus";
+  "w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus";
 
 function Field(props: { label: string; hint?: string; children: any }) {
   return (
     <label class="flex flex-col gap-1">
-      <span class="text-[10.5px] font-medium uppercase tracking-[0.08em] text-v2-text-text-weak">
+      <span class="text-[10.5px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
         {props.label}
       </span>
       {props.children}
       <Show when={props.hint}>
-        <span class="text-[10.5px] text-v2-text-text-weak">{props.hint}</span>
+        <span class="text-[10.5px] text-v2-text-text-faint">{props.hint}</span>
       </Show>
     </label>
   );

@@ -317,7 +317,7 @@ function Custom(props: { onClose: () => void }) {
 // ── shared ──────────────────────────────────────────────────────────────────
 
 const field =
-  "w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak focus:border-v2-border-border-focus";
+  "w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus";
 
 function Errors(props: { error: string }) {
   return (

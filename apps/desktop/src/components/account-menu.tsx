@@ -32,7 +32,7 @@ export function AccountMenu() {
             <div class="truncate text-[12px] font-medium text-v2-text-text-base">
               {name()}
             </div>
-            <div class="truncate text-[10.5px] text-v2-text-text-weak">
+            <div class="truncate text-[10.5px] text-v2-text-text-faint">
               {user()?.email}
             </div>
           </div>
@@ -74,7 +74,7 @@ export function AccountMenu() {
         <Avatar name={name()} size={26} />
         <span class="flex min-w-0 flex-1 flex-col">
           <span class="truncate text-[12px] text-v2-text-text-base">{name()}</span>
-          <span class="truncate text-[10.5px] text-v2-text-text-weak">
+          <span class="truncate text-[10.5px] text-v2-text-text-faint">
             {user()?.email}
           </span>
         </span>

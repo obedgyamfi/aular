@@ -100,7 +100,7 @@ function FileCard(props: { media: MediaDescriptor }) {
           {m().name ?? "attachment"}
         </span>
         <Show when={formatBytes(m().size)}>
-          <span class="text-[10.5px] text-v2-text-text-weak">
+          <span class="text-[10.5px] text-v2-text-text-faint">
             {formatBytes(m().size)}
           </span>
         </Show>

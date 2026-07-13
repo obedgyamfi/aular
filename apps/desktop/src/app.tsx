@@ -6,7 +6,6 @@ import { CalendarPanel } from "~/components/calendar-panel";
 import { ChatPane } from "~/components/chat-pane";
 import { CommandPalette } from "~/components/command-palette";
 import { ConfirmHost } from "~/components/confirm";
-import { WorkPanel } from "~/components/work-panel";
 import { OrgPanel } from "~/components/org-panel";
 import { Rail } from "~/components/rail";
 import { SettingsPanel } from "~/components/settings-panel";
@@ -61,8 +60,7 @@ export function App() {
   };
 
   /** The sidebar is the chat list; the full-width registers don't want it. */
-  const withSidebar = () =>
-    (state.register === "chat" || state.register === "work") && showSidebar();
+  const withSidebar = () => state.register === "chat" && showSidebar();
 
   return (
     <div class="relative flex h-full min-h-0 min-w-0 flex-col bg-v2-background-bg-deep">
@@ -88,9 +86,6 @@ export function App() {
             >
               <ChatPane />
             </div>
-            <Show when={state.register === "work"}>
-              <WorkPanel />
-            </Show>
             <Show when={state.register === "org"}>
               <OrgPanel />
             </Show>

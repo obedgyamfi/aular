@@ -76,7 +76,7 @@ export function SettingsPanel() {
             value={filter()}
             onInput={(e) => setFilter(e.currentTarget.value)}
             placeholder="Find in settings"
-            class="w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 px-2.5 py-1 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak focus:border-v2-border-border-focus"
+            class="w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 px-2.5 py-1 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus"
           />
         </div>
 
@@ -94,7 +94,7 @@ export function SettingsPanel() {
             )}
           </For>
           <Show when={!visible().length}>
-            <p class="px-2.5 py-2 text-[11.5px] text-v2-text-text-weak">No matches.</p>
+            <p class="px-2.5 py-2 text-[11.5px] text-v2-text-text-faint">No matches.</p>
           </Show>
         </nav>
       </aside>
@@ -315,7 +315,7 @@ function Chats() {
                 class="flex items-center gap-1.5 rounded-full bg-v2-background-bg-layer-03 px-2.5 py-1 text-[11.5px] text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
               >
                 {a.name}
-                <span class="text-v2-text-text-weak">✕</span>
+                <span class="text-v2-text-text-faint">✕</span>
               </button>
             )}
           </For>
@@ -373,7 +373,7 @@ function About() {
 // ── pieces ──────────────────────────────────────────────────────────────────
 
 const control =
-  "w-56 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak focus:border-v2-border-border-focus";
+  "w-56 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus";
 
 function Row(props: { title: string; description: string; children?: any }) {
   return (

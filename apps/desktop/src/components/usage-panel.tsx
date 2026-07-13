@@ -122,12 +122,12 @@ export function UsagePanel() {
       </Show>
 
       <Show when={!summary.loading && !totals()?.messages}>
-        <p class="text-[11.5px] text-v2-text-text-weak">
+        <p class="text-[11.5px] text-v2-text-text-faint">
           No activity in this window yet.
         </p>
       </Show>
 
-      <p class="pt-1 text-[10.5px] text-v2-text-text-weak">
+      <p class="pt-1 text-[10.5px] text-v2-text-text-faint">
         Beta — usage is measured, never limited.
       </p>
     </div>

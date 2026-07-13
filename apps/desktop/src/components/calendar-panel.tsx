@@ -118,7 +118,7 @@ export function CalendarPanel() {
     <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
       <div class="flex h-11 shrink-0 items-center gap-3 border-b border-v2-border-border-muted px-4">
         <span class="text-[13px] font-medium text-v2-text-text-base">Calendar</span>
-        <span class="text-[11px] text-v2-text-text-weak">
+        <span class="text-[11px] text-v2-text-text-faint">
           next 7 days · routines and reminders
         </span>
       </div>
@@ -127,7 +127,7 @@ export function CalendarPanel() {
         <Show
           when={!schedule.loading}
           fallback={
-            <p class="flex h-full items-center justify-center text-[12px] text-v2-text-text-weak">
+            <p class="flex h-full items-center justify-center text-[12px] text-v2-text-text-faint">
               Reading schedules…
             </p>
           }
@@ -163,7 +163,7 @@ export function CalendarPanel() {
                         {isToday()
                           ? "Today"
                           : d.date.toLocaleDateString([], { weekday: "long" })}
-                        <span class="pl-1.5 font-normal text-v2-text-text-weak">
+                        <span class="pl-1.5 font-normal text-v2-text-text-faint">
                           {d.date.toLocaleDateString([], {
                             month: "numeric",
                             day: "numeric",
@@ -185,7 +185,7 @@ export function CalendarPanel() {
                           )}
                         </For>
                         <Show when={!d.items.length}>
-                          <span class="px-1 pt-1 text-[11px] text-v2-text-text-weak">
+                          <span class="px-1 pt-1 text-[11px] text-v2-text-text-faint">
                             —
                           </span>
                         </Show>
@@ -199,7 +199,7 @@ export function CalendarPanel() {
                 <div class="flex min-h-[calc(100vh-160px)] w-[220px] shrink-0 flex-col bg-v2-background-bg-base">
                   <div class="border-b border-v2-border-border-muted px-3 py-2 text-[11.5px] font-medium text-v2-text-text-muted">
                     Recurring
-                    <span class="pl-1.5 font-normal text-v2-text-text-weak">
+                    <span class="pl-1.5 font-normal text-v2-text-text-faint">
                       intervals
                     </span>
                   </div>

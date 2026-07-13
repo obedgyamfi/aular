@@ -7,10 +7,11 @@ import { actions, state, type Register } from "~/lib/store";
 const REGISTERS: {
   id: Register;
   label: string;
-  icon: "speech-bubble" | "terminal" | "subagent" | "task";
+  icon: "speech-bubble" | "subagent" | "task";
 }[] = [
+  // No "Work" here: the work view is a lens on a conversation, and it lives in
+  // the chat header next to the thread it belongs to.
   { id: "chat", label: "Chat", icon: "speech-bubble" },
-  { id: "work", label: "Work", icon: "terminal" },
   { id: "org", label: "Organization", icon: "subagent" },
   { id: "calendar", label: "Calendar", icon: "task" },
 ];

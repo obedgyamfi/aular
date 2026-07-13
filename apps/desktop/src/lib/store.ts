@@ -19,7 +19,17 @@ import type {
  * and REST both write here, and keeping per-agent view state (unread, preview,
  * typing) separate from the message log is what stops them fighting.
  */
-export type Register = "chat" | "work" | "org" | "calendar" | "settings";
+export type Register = "chat" | "org" | "calendar" | "settings";
+
+/**
+ * How the chat register draws the conversation you're in.
+ *
+ * "chat" is the messenger — bubbles, groups, media. "work" is the same thread as
+ * a terminal session: the agent's output as a document, with every tool it used
+ * in place. One conversation, two ways of looking at it, which is why this is a
+ * view and not a register.
+ */
+export type ChatView = "chat" | "work";
 
 /** The settings section to land on — set by whatever sent you there. */
 export type SettingsSection =
@@ -46,6 +56,7 @@ export interface Preview {
 
 interface State {
   register: Register;
+  chatView: ChatView;
   settingsSection: SettingsSection;
   user: AuthUser | null;
   health: Health | null;
@@ -83,6 +94,7 @@ interface State {
 
 const [state, set] = createStore<State>({
   register: "chat",
+  chatView: "chat",
   settingsSection: "general",
   user: null,
   health: null,
@@ -219,6 +231,14 @@ export const actions = {
   setRegister(register: Register) {
     set("register", register);
     pushView({ register, agentId: state.activeAgentId });
+  },
+
+  setChatView(view: ChatView) {
+    set("chatView", view);
+  },
+
+  toggleChatView() {
+    set("chatView", state.chatView === "chat" ? "work" : "chat");
   },
 
   /** Open Settings on a particular section — used by the composer's model badge

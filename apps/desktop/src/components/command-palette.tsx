@@ -51,11 +51,17 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
     },
     {
       id: "work",
-      label: "Go to Work",
-      hint: "The tool register",
+      label:
+        state.chatView === "work"
+          ? "Show the conversation"
+          : "Show the work — tools and terminal",
+      hint: state.activeAgentId ? undefined : "Open an agent first",
       icon: "terminal",
-      keywords: "tools terminal session feed",
-      run: () => actions.setRegister("work"),
+      keywords: "tools terminal session feed work view",
+      run: () => {
+        actions.setRegister("chat");
+        actions.toggleChatView();
+      },
     },
     {
       id: "org",
@@ -204,9 +210,9 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
               setCursor(0);
             }}
             placeholder="Jump to an agent, or run a command"
-            class="min-w-0 flex-1 bg-transparent text-[13px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak"
+            class="min-w-0 flex-1 bg-transparent text-[13px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
           />
-          <kbd class="shrink-0 rounded border border-v2-border-border-muted px-1.5 py-0.5 font-mono text-[9.5px] text-v2-text-text-weak">
+          <kbd class="shrink-0 rounded border border-v2-border-border-muted px-1.5 py-0.5 font-mono text-[9.5px] text-v2-text-text-faint">
             ESC
           </kbd>
         </div>
@@ -247,7 +253,7 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
           </Show>
 
           <Show when={!flat().length}>
-            <p class="px-2 py-6 text-center text-[11.5px] text-v2-text-text-weak">
+            <p class="px-2 py-6 text-center text-[11.5px] text-v2-text-text-faint">
               Nothing matches “{query()}”.
             </p>
           </Show>
@@ -259,7 +265,7 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
 
 function Label(props: { children: any }) {
   return (
-    <div class="px-2 pb-1 pt-2 text-[9.5px] font-medium uppercase tracking-[0.08em] text-v2-text-text-weak">
+    <div class="px-2 pb-1 pt-2 text-[9.5px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
       {props.children}
     </div>
   );
@@ -298,7 +304,7 @@ function Item(props: {
         {c().label}
       </span>
       <Show when={c().hint}>
-        <span class="shrink-0 text-[10.5px] text-v2-text-text-weak">{c().hint}</span>
+        <span class="shrink-0 text-[10.5px] text-v2-text-text-faint">{c().hint}</span>
       </Show>
     </button>
   );

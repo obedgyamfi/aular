@@ -2,30 +2,27 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { Markdown } from "~/components/markdown";
-import { Composer } from "~/components/composer";
-import {
-  activeAgent,
-  activeConversationId,
-  activeWorking,
-  state,
-} from "~/lib/store";
+import { activeConversationId, activeWorking, state } from "~/lib/store";
 import type { Message, ToolCall } from "~/lib/types";
 
 /**
- * The Work register — ported from the prototype's WorkPanel.
+ * The terminal view of a conversation — ported from the prototype's WorkPanel.
  *
- * A Claude-Code-style workspace for whichever agent is selected: the agent's
- * output renders as a full-width document (no bubbles), your turns are compact
- * chips on the right, and every tool the agent uses appears in place as a
- * collapsible `› tool — preview` line, pulsing while it runs. The feed is the
- * conversation and the tool calls interleaved by time, which is what makes the
- * agent's actual work legible rather than just its conclusions.
+ * The same thread you were just reading, shown as work instead of talk: the
+ * agent's output as a full-width document (no bubbles), your turns as compact
+ * chips, and every tool it reaches for in place as a collapsible
+ * `› tool — preview` line, breathing while it runs. Messages and tool calls
+ * interleaved by time, which is what makes the agent's *work* legible and not
+ * just its conclusions.
+ *
+ * It lives inside the chat pane (same header, same composer), because it is a
+ * way of looking at one conversation, not a separate place to be.
  */
 type FeedItem =
   | { kind: "message"; at: string; message: Message }
   | { kind: "tool"; at: string; tool: ToolCall };
 
-export function WorkPanel() {
+export function WorkFeed() {
   const feed = createMemo<FeedItem[]>(() => {
     const convoId = activeConversationId();
     if (!convoId) return [];
@@ -65,63 +62,36 @@ export function WorkPanel() {
   };
 
   return (
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
-      <Show
-        when={activeAgent()}
-        fallback={
-          <div class="flex flex-1 items-center justify-center">
-            <p class="text-[13px] text-v2-text-text-muted">
-              Pick an agent to open its workspace
-            </p>
+    <div ref={scroller} onScroll={onScroll} class="min-h-0 flex-1 overflow-y-auto">
+      <div class="mx-auto flex w-full max-w-[860px] flex-col px-6 pb-8 pt-5">
+        <Show when={!feed().length}>
+          <p class="py-10 text-center text-[12px] text-v2-text-text-faint">
+            Nothing yet. This is where the agent's turns and every tool it uses
+            will appear.
+          </p>
+        </Show>
+
+        <For each={feed()}>
+          {(item) =>
+            item.kind === "tool" ? (
+              <ToolLine tool={item.tool} />
+            ) : item.message.sender_type === "user" ? (
+              <UserChip message={item.message} />
+            ) : item.message.sender_type === "system" ? (
+              <SystemNote message={item.message} />
+            ) : (
+              <AgentBlock message={item.message} />
+            )
+          }
+        </For>
+
+        <Show when={activeWorking()}>
+          <div class="flex items-center gap-2 py-3">
+            <span class="aular-breathe size-1.5 rounded-full bg-v2-icon-icon-accent" />
+            <span class="aular-shimmer text-[12px] font-medium">working</span>
           </div>
-        }
-      >
-        {(agent) => (
-          <>
-            <div class="flex h-9 shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-4">
-              <span class="text-[13px] font-medium text-v2-text-text-base">
-                {agent().name}
-              </span>
-              <span class="text-[11px] text-v2-text-text-weak">work session</span>
-            </div>
-
-            <div ref={scroller} onScroll={onScroll} class="min-h-0 flex-1 overflow-y-auto">
-              <div class="mx-auto flex w-full max-w-[860px] flex-col px-6 pb-8 pt-5">
-                <Show when={!feed().length}>
-                  <p class="py-10 text-center text-[12px] text-v2-text-text-weak">
-                    Nothing yet. This is where the agent's turns and every tool it
-                    uses will appear.
-                  </p>
-                </Show>
-
-                <For each={feed()}>
-                  {(item) =>
-                    item.kind === "tool" ? (
-                      <ToolLine tool={item.tool} />
-                    ) : item.message.sender_type === "user" ? (
-                      <UserChip message={item.message} />
-                    ) : item.message.sender_type === "system" ? (
-                      <SystemNote message={item.message} />
-                    ) : (
-                      <AgentBlock message={item.message} />
-                    )
-                  }
-                </For>
-
-                <Show when={activeWorking()}>
-                  <div class="flex items-center gap-2 py-3 text-[12px] text-v2-text-text-weak">
-                    <span class="size-1.5 animate-pulse rounded-full bg-v2-icon-icon-accent" />
-                    working…
-                  </div>
-                </Show>
-
-              </div>
-            </div>
-          </>
-        )}
-      </Show>
-
-      <Composer />
+        </Show>
+      </div>
     </div>
   );
 }
@@ -139,7 +109,7 @@ function AgentBlock(props: { message: Message }) {
     <div class="py-2 text-[13.5px] leading-relaxed text-v2-text-text-base">
       <Markdown content={content()} />
       <Show when={props.message.streaming}>
-        <span class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-v2-icon-icon-accent align-middle" />
+        <span class="aular-caret ml-0.5 inline-block h-3.5 w-[2px] bg-v2-icon-icon-accent align-middle" />
       </Show>
     </div>
   );
@@ -209,13 +179,13 @@ function ToolLine(props: { tool: ToolCall }) {
           class="shrink-0 font-mono"
           classList={{
             "text-v2-icon-icon-accent": running(),
-            "animate-pulse": running(),
+            "aular-breathe": running(),
           }}
         >
           {props.tool.tool_name}
         </span>
         <Show when={argsPreview()}>
-          <span class="truncate font-mono text-[11px] text-v2-text-text-weak">
+          <span class="truncate font-mono text-[11px] text-v2-text-text-faint">
             {argsPreview()}
           </span>
         </Show>
@@ -231,7 +201,7 @@ function ToolLine(props: { tool: ToolCall }) {
           <Show
             when={snippet()}
             fallback={
-              <span class="text-[11px] text-v2-text-text-weak">
+              <span class="text-[11px] text-v2-text-text-faint">
                 {running() ? "running…" : "no result captured"}
               </span>
             }

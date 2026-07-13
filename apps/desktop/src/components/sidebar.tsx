@@ -72,7 +72,7 @@ export function Sidebar() {
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             placeholder="Search agents"
-            class="min-w-0 flex-1 bg-transparent py-0.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak"
+            class="min-w-0 flex-1 bg-transparent py-0.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
           />
         </div>
       </div>
@@ -89,7 +89,7 @@ export function Sidebar() {
         </For>
 
         <Show when={staff().length}>
-          <div class="px-2 pb-1 pt-3 text-[10px] font-medium tracking-[0.08em] text-v2-text-text-weak">
+          <div class="px-2 pb-1 pt-3 text-[10px] font-medium tracking-[0.08em] text-v2-text-text-faint">
             STAFF
           </div>
         </Show>
@@ -111,7 +111,7 @@ export function Sidebar() {
         </Show>
 
         <Show when={state.agents.length && !system().length && !staff().length}>
-          <p class="px-3 py-8 text-center text-[11.5px] text-v2-text-text-weak">
+          <p class="px-3 py-8 text-center text-[11.5px] text-v2-text-text-faint">
             No agents match “{query()}”
           </p>
         </Show>

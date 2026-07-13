@@ -65,7 +65,7 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
   };
 
   const field =
-    "w-full rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-01 px-3 py-2 text-[13px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak focus:border-v2-border-border-focus";
+    "w-full rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-01 px-3 py-2 text-[13px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus";
 
   return (
     <div class="flex h-full flex-1 items-center justify-center bg-v2-background-bg-base px-6">

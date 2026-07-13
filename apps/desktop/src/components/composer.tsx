@@ -179,7 +179,7 @@ export function Composer() {
                     {c.cmd}
                   </span>
                   <Show when={c.args}>
-                    <span class="shrink-0 font-mono text-[10.5px] text-v2-text-text-weak">
+                    <span class="shrink-0 font-mono text-[10.5px] text-v2-text-text-faint">
                       {c.args}
                     </span>
                   </Show>
@@ -189,7 +189,7 @@ export function Composer() {
                 </button>
               )}
             </For>
-            <div class="mt-1 border-t border-v2-border-border-muted px-3 pb-0.5 pt-1.5 text-[10px] text-v2-text-text-weak">
+            <div class="mt-1 border-t border-v2-border-border-muted px-3 pb-0.5 pt-1.5 text-[10px] text-v2-text-text-faint">
               ↑↓ navigate · Tab complete · Enter run · gateway commands cost 0 tokens
             </div>
           </div>
@@ -227,7 +227,7 @@ export function Composer() {
             }}
             onKeyDown={onKeyDown}
             placeholder={enabled() ? "Type / for commands" : "Select an agent first"}
-            class="max-h-44 flex-1 resize-none bg-transparent py-1 font-mono text-[13px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak disabled:opacity-60"
+            class="max-h-44 flex-1 resize-none bg-transparent py-1 font-mono text-[13px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint disabled:opacity-60"
           />
 
           <button
@@ -269,7 +269,7 @@ function ContextMeter(props: { ctx: ConversationContext | null; draft: string })
 
         return (
           <span
-            class="flex min-w-0 items-center gap-1.5 text-[10.5px] text-v2-text-text-weak"
+            class="flex min-w-0 items-center gap-1.5 text-[10.5px] text-v2-text-text-faint"
             title={`≈${used().toLocaleString()} of ${c().context_length.toLocaleString()} context tokens (estimate — /status for exact)`}
           >
             <span class="h-1 w-14 overflow-hidden rounded-full bg-v2-background-bg-layer-03">

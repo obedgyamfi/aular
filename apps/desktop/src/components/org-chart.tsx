@@ -51,7 +51,7 @@ export function OrgChart() {
 
   const dropOnCanvas = (e: DragEvent) => {
     e.preventDefault();
-    const id = dragging();
+    const id = e.dataTransfer?.getData("text/plain") || dragging();
     if (id) void reparent(id, null);
   };
 
@@ -75,6 +75,7 @@ export function OrgChart() {
       <div
         onDragOver={(e) => {
           e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
           setDropTarget("__top__");
         }}
         onDragLeave={() => setDropTarget(null)}
@@ -91,7 +92,7 @@ export function OrgChart() {
             <div class="mt-1.5 w-full truncate text-[12.5px] font-medium text-v2-text-text-base">
               {userName()}
             </div>
-            <div class="text-[10.5px] text-v2-text-text-weak">CEO</div>
+            <div class="text-[10.5px] text-v2-text-text-faint">CEO</div>
           </div>
 
           <Show when={system()}>
@@ -130,7 +131,7 @@ export function OrgChart() {
           </Show>
 
           <Show when={!staff().length}>
-            <p class="mt-10 text-[11.5px] text-v2-text-text-weak">
+            <p class="mt-10 text-[11.5px] text-v2-text-text-faint">
               No staff yet. Hire an agent and it appears here.
             </p>
           </Show>
@@ -197,31 +198,37 @@ function Subtree(props: {
 
   return (
     <div class="flex flex-col items-center">
-      <div
-        draggable
-        onDragStart={() => props.onDragStart(a().id)}
-        onDragEnd={() => props.onDragStart(null)}
+      <NodeCard
+        agent={a()}
+        subtitle={prettyRole(a().role)}
+        dropTarget={props.dropTarget === a().id}
+        dragging={props.dragging === a().id}
+        onDragStart={(e) => {
+          // WebKit refuses to begin a drag whose dataTransfer is empty, and the
+          // id rides along so the drop doesn't have to trust a signal.
+          e.dataTransfer?.setData("text/plain", a().id);
+          e.dataTransfer!.effectAllowed = "move";
+          props.onDragStart(a().id);
+        }}
+        onDragEnd={() => {
+          props.onDragStart(null);
+          props.onDropTarget(null);
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation(); // don't let the canvas claim this as "top level"
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
           if (props.dragging !== a().id) props.onDropTarget(a().id);
         }}
         onDragLeave={() => props.onDropTarget(null)}
         onDrop={(e) => {
+          e.preventDefault();
           e.stopPropagation();
-          if (props.dragging && props.dragging !== a().id) {
-            props.onDrop(props.dragging, a().id);
-          }
+          const dragged = e.dataTransfer?.getData("text/plain") || props.dragging;
+          if (dragged && dragged !== a().id) props.onDrop(dragged, a().id);
         }}
-      >
-        <NodeCard
-          agent={a()}
-          subtitle={prettyRole(a().role)}
-          dropTarget={props.dropTarget === a().id}
-          dragging={props.dragging === a().id}
-          onOpen={props.onOpen}
-        />
-      </div>
+        onOpen={props.onOpen}
+      />
 
       <Show when={kids().length}>
         <Trunk />
@@ -252,16 +259,40 @@ function NodeCard(props: {
   dropTarget: boolean;
   dragging: boolean;
   onOpen: (a: Agent) => void;
+  /** Omitted for the system agent, which nobody re-parents. */
+  onDragStart?: (e: DragEvent) => void;
+  onDragEnd?: () => void;
+  onDragOver?: (e: DragEvent) => void;
+  onDragLeave?: () => void;
+  onDrop?: (e: DragEvent) => void;
 }) {
   const a = () => props.agent;
   const working = () => agentWorking(a().id);
+  const draggable = () => !!props.onDragStart;
 
+  // A <div role="button">, deliberately: a real <button> eats the mousedown that
+  // would start a drag, so the card would never lift.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabindex="0"
+      draggable={draggable()}
+      onDragStart={props.onDragStart}
+      onDragEnd={props.onDragEnd}
+      onDragOver={props.onDragOver}
+      onDragLeave={props.onDragLeave}
+      onDrop={props.onDrop}
       onClick={() => props.onOpen(a())}
-      class="flex w-36 cursor-grab flex-col items-center rounded-xl border px-3 py-2.5 text-center transition-colors active:cursor-grabbing"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          props.onOpen(a());
+        }
+      }}
+      class="flex w-36 flex-col items-center rounded-xl border px-3 py-2.5 text-center transition-colors"
       classList={{
+        "cursor-grab active:cursor-grabbing": draggable(),
+        "cursor-pointer": !draggable(),
         "border-v2-border-border-focus bg-v2-overlay-simple-overlay-pressed":
           props.dropTarget,
         "border-v2-border-border-muted bg-v2-background-bg-layer-02 hover:bg-v2-overlay-simple-overlay-hover":
@@ -283,10 +314,10 @@ function NodeCard(props: {
       <div class="mt-1.5 w-full truncate text-[12.5px] font-medium text-v2-text-text-base">
         {a().name}
       </div>
-      <div class="w-full truncate text-[10.5px] text-v2-text-text-weak">
+      <div class="w-full truncate text-[10.5px] text-v2-text-text-faint">
         {props.subtitle}
       </div>
-    </button>
+    </div>
   );
 }
 

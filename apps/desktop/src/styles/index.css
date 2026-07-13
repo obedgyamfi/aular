@@ -95,6 +95,92 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Motion.
+     opencode's Tailwind preset ships no keyframes at all — `animate-pulse`,
+     `animate-bounce` and `animate-spin` resolve to `animation-name: none`. Every
+     moving thing in this app (the thinking indicator, the streaming caret, the
+     running-tool pulse) was therefore frozen. These are ours. */
+
+  /* The thinking indicator: dots that rise and fade in sequence. */
+  @keyframes aular-think {
+    0%,
+    70%,
+    100% {
+      opacity: 0.28;
+      transform: translateY(0);
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(-2.5px);
+    }
+  }
+
+  /* A light sweeping across the label while a turn is in flight. The gradient
+     tiles, so it always covers the text — with `no-repeat` the sweep slides off
+     the element and the (deliberately transparent) letters vanish with it. */
+  @keyframes aular-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: 0% 0;
+    }
+  }
+
+  /* The caret at the end of a streaming reply. */
+  @keyframes aular-caret {
+    0%,
+    45% {
+      opacity: 1;
+    }
+    55%,
+    100% {
+      opacity: 0.15;
+    }
+  }
+
+  /* A tool that is still running. */
+  @keyframes aular-breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.82);
+    }
+  }
+
+  .aular-think {
+    animation: aular-think 1.25s ease-in-out infinite;
+  }
+  .aular-caret {
+    animation: aular-caret 1s steps(1, end) infinite;
+  }
+  .aular-breathe {
+    animation: aular-breathe 1.4s ease-in-out infinite;
+  }
+  /* The `background:` *shorthand* carrying var()s gets serialized to empty
+     longhands by the CSS minifier — the gradient silently vanishes and the text,
+     which is transparent by design, disappears with it. Longhand survives. */
+  .aular-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      var(--v2-text-text-faint) 0%,
+      var(--v2-text-text-faint) 35%,
+      var(--v2-text-text-base) 50%,
+      var(--v2-text-text-faint) 65%,
+      var(--v2-text-text-faint) 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: aular-shimmer 1.9s linear infinite;
+  }
 }
 
 /* Agent output. Kept close to the prototype's reading rhythm, on opencode's

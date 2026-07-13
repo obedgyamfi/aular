@@ -109,7 +109,7 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
         <Show
           when={(routines() ?? []).length}
           fallback={
-            <p class="py-4 text-[11.5px] leading-relaxed text-v2-text-text-weak">
+            <p class="py-4 text-[11.5px] leading-relaxed text-v2-text-text-faint">
               No routines yet. Add one and {agent().name} will do the work on
               schedule and report back in this chat — even while the app is closed.
             </p>
@@ -132,7 +132,7 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
                       {rt.target_behavior}
                     </p>
                     <Show when={rt.last_run_at}>
-                      <span class="text-[10px] text-v2-text-text-weak">
+                      <span class="text-[10px] text-v2-text-text-faint">
                         Last ran {new Date(rt.last_run_at!).toLocaleString()}
                       </span>
                     </Show>
@@ -161,7 +161,7 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
         </Show>
 
         <div class="flex flex-col gap-2 border-t border-v2-border-border-muted pt-3.5">
-          <span class="text-[10.5px] font-medium uppercase tracking-[0.08em] text-v2-text-text-weak">
+          <span class="text-[10.5px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
             New routine
           </span>
           <input
@@ -198,7 +198,7 @@ export function RoutinesModal(props: { agent: Agent; onClose: () => void }) {
 }
 
 const field =
-  "w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-weak focus:border-v2-border-border-focus";
+  "w-full rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 px-2.5 py-1.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus";
 
 function Toggle(props: { on: boolean; disabled?: boolean; onClick: () => void }) {
   return (

@@ -2,6 +2,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
 import { MessageBubble } from "~/components/message-bubble";
+import { Thinking } from "~/components/thinking";
 import { activeAgent, activeMessages, activeWorking, state } from "~/lib/store";
 import type { Message } from "~/lib/types";
 
@@ -113,7 +114,7 @@ export function MessageList() {
                 <div class="flex flex-col">
                   <Show when={info().divider}>
                     <div class="flex justify-center py-3">
-                      <span class="text-[11px] text-v2-text-text-weak">
+                      <span class="text-[11px] text-v2-text-text-faint">
                         {info().divider}
                       </span>
                     </div>
@@ -160,7 +161,7 @@ export function MessageList() {
 
                           <div class="min-w-0 flex-1">
                             <Show when={info().first}>
-                              <div class="mb-0.5 px-1 text-[11px] text-v2-text-text-weak">
+                              <div class="mb-0.5 px-1 text-[11px] text-v2-text-text-faint">
                                 {agent()?.name ?? "Agent"}
                               </div>
                             </Show>
@@ -200,9 +201,7 @@ export function MessageList() {
           </For>
 
           <Show when={activeWorking()}>
-            <div class="flex items-center gap-2 pl-10 pt-3">
-              <TypingDots />
-            </div>
+            <Thinking agentName={agent()?.name ?? "Agent"} />
           </Show>
 
         </div>
@@ -221,20 +220,6 @@ export function MessageList() {
   );
 }
 
-function TypingDots() {
-  return (
-    <span class="flex items-center gap-1 rounded-lg bg-v2-background-bg-layer-02 px-3 py-2">
-      <For each={[0, 200, 400]}>
-        {(delay) => (
-          <span
-            class="size-1.5 animate-bounce rounded-full bg-v2-icon-icon-muted"
-            style={{ "animation-duration": "1s", "animation-delay": `${delay}ms` }}
-          />
-        )}
-      </For>
-    </span>
-  );
-}
 
 /** A long reply arrives split into chat-sized bubbles. */
 function splitChunks(content: string): string[] {

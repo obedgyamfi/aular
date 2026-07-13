@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
+import { Dots } from "~/components/thinking";
 import { settingsActions } from "~/lib/settings";
 import { agentWorking, state } from "~/lib/store";
 import type { Agent } from "~/lib/types";
@@ -52,7 +53,7 @@ export function AgentListItem(props: {
               {agent().name}
             </span>
             <Show when={muted()}>
-              <span class="shrink-0 text-v2-text-text-weak" title="Muted">
+              <span class="shrink-0 text-v2-text-text-faint" title="Muted">
                 <MuteIcon />
               </span>
             </Show>
@@ -63,7 +64,7 @@ export function AgentListItem(props: {
               class="shrink-0 text-[10.5px] tabular-nums"
               classList={{
                 "text-v2-text-text-accent font-medium": isUnread(),
-                "text-v2-text-text-weak": !isUnread(),
+                "text-v2-text-text-faint": !isUnread(),
               }}
             >
               {listTime(time())}
@@ -75,13 +76,9 @@ export function AgentListItem(props: {
           <Show
             when={!working()}
             fallback={
-              <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11.5px] text-v2-text-text-accent">
-                <span class="flex items-center gap-0.5">
-                  <TypingDot delay={0} />
-                  <TypingDot delay={200} />
-                  <TypingDot delay={400} />
-                </span>
-                typing…
+              <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11.5px]">
+                <Dots />
+                <span class="aular-shimmer font-medium">working</span>
               </span>
             }
           >
@@ -110,14 +107,6 @@ export function AgentListItem(props: {
   );
 }
 
-function TypingDot(props: { delay: number }) {
-  return (
-    <span
-      class="size-1 animate-bounce rounded-full bg-v2-icon-icon-accent"
-      style={{ "animation-duration": "1s", "animation-delay": `${props.delay}ms` }}
-    />
-  );
-}
 
 function MuteIcon() {
   return (

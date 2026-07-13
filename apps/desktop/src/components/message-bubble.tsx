@@ -136,7 +136,7 @@ export function MessageBubble(props: {
               <div class="text-[13px] leading-relaxed">
                 <Markdown content={content()} />
                 <Show when={props.streaming}>
-                  <span class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-v2-icon-icon-accent align-middle" />
+                  <span class="aular-caret ml-0.5 inline-block h-3.5 w-[2px] bg-v2-icon-icon-accent align-middle" />
                 </Show>
               </div>
             </Show>

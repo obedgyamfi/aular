@@ -60,7 +60,7 @@ export function TitleBar(props: { engine?: string; onSearch?: () => void }) {
       {/* The drag region: everything not a control. */}
       <div data-tauri-drag-region class="flex flex-1 items-center justify-end gap-3 px-3">
         <Show when={props.engine}>
-          <span class="font-mono text-[11px] text-v2-text-text-weak">{props.engine}</span>
+          <span class="font-mono text-[11px] text-v2-text-text-faint">{props.engine}</span>
         </Show>
       </div>
 

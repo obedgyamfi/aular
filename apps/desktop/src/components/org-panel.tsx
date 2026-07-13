@@ -3,6 +3,7 @@ import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { AddAgentModal } from "~/components/add-agent-modal";
 import { OrgChart } from "~/components/org-chart";
 import { OrgDocs } from "~/components/org-docs";
+import { TokenChart } from "~/components/token-chart";
 import { api } from "~/lib/api";
 import { state } from "~/lib/store";
 import type { AgentTokenUsage, DailyTokens } from "~/lib/types";
@@ -38,21 +39,21 @@ export function OrgPanel() {
         </TabBtn>
       </div>
 
-      {/* The chart is a canvas: it wants the whole pane and scrolls itself, so
-          it doesn't end up as a small box scrolling inside a scrolling page.
-          The reading tabs are the opposite — a measured column. */}
+      {/* The chart and the bank are workspaces: they take the whole pane and
+          manage their own scrolling. Overview and Build are reading — a measured
+          column, centered. */}
       <Show when={tab() === "chart"}>
         <OrgChart />
       </Show>
+      <Show when={tab() === "docs"}>
+        <OrgDocs />
+      </Show>
 
-      <Show when={tab() !== "chart"}>
+      <Show when={tab() === "overview" || tab() === "build"}>
         <div class="min-h-0 flex-1 overflow-y-auto">
           <div class="mx-auto w-full max-w-[1000px] px-6 py-6">
             <Show when={tab() === "overview"}>
               <Overview />
-            </Show>
-            <Show when={tab() === "docs"}>
-              <OrgDocs />
             </Show>
             <Show when={tab() === "build"}>
               <Build />
@@ -152,13 +153,13 @@ function fmt(n?: number): string {
 function Tile(props: { label: string; value: string; sub: string }) {
   return (
     <div class="flex flex-col gap-1 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 px-3 py-2.5">
-      <span class="text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-weak">
+      <span class="text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
         {props.label}
       </span>
       <span class="font-mono text-[18px] leading-none text-v2-text-text-base">
         {props.value}
       </span>
-      <span class="text-[10px] text-v2-text-text-weak">{props.sub}</span>
+      <span class="text-[10px] text-v2-text-text-faint">{props.sub}</span>
     </div>
   );
 }
@@ -190,53 +191,15 @@ function TokensPerDay(props: { days: DailyTokens[] }) {
     return out;
   });
 
-  const max = () =>
-    Math.max(1, ...series().map((d) => d.input_tokens + d.output_tokens));
-
   return (
     <Card title="Tokens per day" subtitle="last 14 days">
       <Show
         when={props.days.length}
         fallback={<Empty note="No sessions recorded yet." />}
       >
-        <div class="flex h-[140px] items-end gap-[3px]">
-          <For each={series()}>
-            {(d) => {
-              const total = d.input_tokens + d.output_tokens;
-              const h = (n: number) => `${Math.max(1, (n / max()) * 130)}px`;
-              return (
-                <div
-                  class="flex flex-1 flex-col justify-end gap-px"
-                  title={`${d.date}: ${total.toLocaleString()} tokens`}
-                >
-                  <div
-                    class="rounded-t-sm bg-v2-icon-icon-accent"
-                    style={{ height: h(d.output_tokens) }}
-                  />
-                  <div
-                    class="bg-v2-icon-icon-accent/40"
-                    style={{ height: h(d.input_tokens) }}
-                  />
-                </div>
-              );
-            }}
-          </For>
-        </div>
-        <div class="flex gap-4 pt-2 text-[10px] text-v2-text-text-weak">
-          <Legend swatch="bg-v2-icon-icon-accent" label="output" />
-          <Legend swatch="bg-v2-icon-icon-accent/40" label="input" />
-        </div>
+        <TokenChart days={series()} />
       </Show>
     </Card>
-  );
-}
-
-function Legend(props: { swatch: string; label: string }) {
-  return (
-    <span class="flex items-center gap-1.5">
-      <span class={`size-2 rounded-sm ${props.swatch}`} />
-      {props.label}
-    </span>
   );
 }
 
@@ -280,7 +243,7 @@ function AgentTable(props: { rows: AgentTokenUsage[] }) {
         <div class="overflow-x-auto">
           <table class="w-full text-[12px]">
             <thead>
-              <tr class="text-left text-[10px] uppercase tracking-[0.08em] text-v2-text-text-weak">
+              <tr class="text-left text-[10px] uppercase tracking-[0.08em] text-v2-text-text-faint">
                 <th class="pb-2 pr-3 font-medium">Agent</th>
                 <th class="pb-2 pr-3 text-right font-medium">In</th>
                 <th class="pb-2 pr-3 text-right font-medium">Out</th>
@@ -316,7 +279,7 @@ function Card(props: { title: string; subtitle?: string; children: any }) {
       <div class="flex items-baseline gap-2">
         <h2 class="text-[12.5px] font-medium text-v2-text-text-base">{props.title}</h2>
         <Show when={props.subtitle}>
-          <span class="text-[11px] text-v2-text-text-weak">{props.subtitle}</span>
+          <span class="text-[11px] text-v2-text-text-faint">{props.subtitle}</span>
         </Show>
       </div>
       {props.children}
@@ -326,6 +289,6 @@ function Card(props: { title: string; subtitle?: string; children: any }) {
 
 function Empty(props: { note: string }) {
   return (
-    <p class="py-6 text-center text-[11px] text-v2-text-text-weak">{props.note}</p>
+    <p class="py-6 text-center text-[11px] text-v2-text-text-faint">{props.note}</p>
   );
 }

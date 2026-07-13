@@ -20,7 +20,7 @@ export function MemoryPanel() {
       <Show
         when={!graph.loading}
         fallback={
-          <p class="py-6 text-[11.5px] text-v2-text-text-weak">Reading memory…</p>
+          <p class="py-6 text-[11.5px] text-v2-text-text-faint">Reading memory…</p>
         }
       >
         <Section
@@ -41,7 +41,7 @@ export function MemoryPanel() {
                     {m.label}
                   </span>
                   <Show when={m.source}>
-                    <span class="text-[10px] uppercase tracking-[0.08em] text-v2-text-text-weak">
+                    <span class="text-[10px] uppercase tracking-[0.08em] text-v2-text-text-faint">
                       {m.source}
                     </span>
                   </Show>
@@ -75,7 +75,7 @@ function SkillRow(props: { skill: MemoryNode }) {
           {s().category}
         </span>
       </Show>
-      <span class="shrink-0 text-[10.5px] tabular-nums text-v2-text-text-weak">
+      <span class="shrink-0 text-[10.5px] tabular-nums text-v2-text-text-faint">
         {s().use_count === 1 ? "1 use" : `${s().use_count} uses`}
       </span>
     </div>
@@ -90,14 +90,14 @@ function Section(props: {
 }) {
   return (
     <div class="flex flex-col gap-1.5">
-      <span class="text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-weak">
+      <span class="text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
         {props.label}
         {props.count > 0 ? ` · ${props.count}` : ""}
       </span>
       <Show
         when={props.count > 0}
         fallback={
-          <p class="text-[11.5px] text-v2-text-text-weak">{props.empty}</p>
+          <p class="text-[11.5px] text-v2-text-text-faint">{props.empty}</p>
         }
       >
         <div class="flex flex-col gap-1">{props.children}</div>
