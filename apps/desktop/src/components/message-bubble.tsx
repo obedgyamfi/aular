@@ -136,6 +136,11 @@ export function MessageBubble(props: {
               )}
             </Show>
 
+            {/* Media above the words, as every chat app draws it. */}
+            <Show when={props.showMedia}>
+              <MediaAttachments message={m()} />
+            </Show>
+
             <Show
               when={!isUser()}
               fallback={
@@ -150,10 +155,6 @@ export function MessageBubble(props: {
                   <span class="aular-caret ml-0.5 inline-block h-3.5 w-[2px] bg-v2-icon-icon-accent align-middle" />
                 </Show>
               </div>
-            </Show>
-
-            <Show when={props.showMedia}>
-              <MediaAttachments message={m()} />
             </Show>
           </div>
 
