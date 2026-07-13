@@ -275,9 +275,13 @@ export const actions = {
         s.agents = agents;
         s.model = model;
         s.error = null;
+        // The list is newest-activity first, and an agent can have several
+        // threads. First one wins — overwriting bound every agent to its
+        // OLDEST conversation, with a stale preview and unread count to match.
         for (const c of convos) {
-          s.conversationOf[c.agent_profile_id] = c.id;
           s.agentOf[c.id] = c.agent_profile_id;
+          if (c.agent_profile_id in s.conversationOf) continue;
+          s.conversationOf[c.agent_profile_id] = c.id;
           s.unread[c.agent_profile_id] = c.unread_count ?? 0;
           if (c.last_message && c.last_message_at) {
             s.preview[c.agent_profile_id] = {

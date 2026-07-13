@@ -3,7 +3,13 @@ import { Icon } from "@opencode-ai/ui/icon";
 
 import { api } from "~/lib/api";
 import { SLASH_COMMANDS, type SlashCommand } from "~/lib/slash-commands";
-import { actions, activeAgent, activeConversationId, state } from "~/lib/store";
+import {
+  actions,
+  activeAgent,
+  activeConversationId,
+  activeWorking,
+  state,
+} from "~/lib/store";
 import type { ConversationContext } from "~/lib/types";
 
 /**
@@ -127,6 +133,21 @@ export function Composer() {
   return (
     <div class="shrink-0 px-4 pb-4">
       <div class="relative mx-auto w-full max-w-[820px]">
+        {/* The brake. While a turn is in flight the user must always have a
+            way to pull the agent's hand back — /stop is the gateway's own
+            zero-token interrupt, this is just a button on it. */}
+        <Show when={activeWorking()}>
+          <button
+            type="button"
+            onClick={() => void actions.send("/stop")}
+            title="Interrupt the running work (/stop)"
+            class="absolute bottom-full left-1/2 z-20 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1 text-[11px] font-medium text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+          >
+            <span class="size-[8px] rounded-[2px] bg-v2-state-fg-danger" />
+            Stop
+          </button>
+        </Show>
+
         {/* Replying to */}
         <Show when={state.replyTo}>
           {(m) => (

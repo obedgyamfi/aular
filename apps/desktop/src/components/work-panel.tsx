@@ -115,11 +115,12 @@ function AgentBlock(props: { message: Message }) {
   );
 }
 
-/** Your turns — compact chips on the right, as in the prototype. */
+/** Your turns — compact chips on the right, in the same accent as the chat
+ *  view's user bubbles: one voice, one color, whichever lens is on. */
 function UserChip(props: { message: Message }) {
   return (
     <div class="flex justify-end py-2.5">
-      <div class="max-w-[78%] whitespace-pre-wrap break-words rounded-md bg-v2-background-bg-layer-02 px-3 py-2 text-[12.5px] leading-5 text-v2-text-text-base">
+      <div class="max-w-[78%] whitespace-pre-wrap break-words rounded-md bg-v2-background-bg-accent px-3 py-2 text-[12.5px] leading-5 text-v2-text-text-inverse">
         {props.message.content || "(media)"}
       </div>
     </div>

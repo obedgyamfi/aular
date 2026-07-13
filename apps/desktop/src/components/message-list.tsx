@@ -1,9 +1,15 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
 import { MessageBubble } from "~/components/message-bubble";
 import { Thinking } from "~/components/thinking";
-import { activeAgent, activeMessages, activeWorking, state } from "~/lib/store";
+import {
+  activeAgent,
+  activeConversationId,
+  activeMessages,
+  activeWorking,
+  state,
+} from "~/lib/store";
 import type { Message } from "~/lib/types";
 
 /**
@@ -67,17 +73,41 @@ export function MessageList() {
 
   // Follow the tail only when the reader is already there; otherwise count what
   // they're missing and offer a jump. Yanking someone's scroll is hostile.
+  //
+  // The counter counts *messages that arrived*, nothing else. atBottom is read
+  // untracked — an earlier version subscribed to it, so every scroll past the
+  // threshold re-ran the effect and incremented the count with no new message.
+  let seenConvo: string | undefined;
+  let seenCount = 0;
   createEffect(() => {
+    const convo = activeConversationId();
     const n = messages().length;
-    activeWorking();
-    if (atBottom()) {
+    activeWorking(); // the typing indicator adds height worth following too
+
+    if (convo !== seenConvo) {
+      // A different thread: start at its tail, with nothing "new".
+      seenConvo = convo;
+      seenCount = n;
+      setNewCount(0);
+      queueMicrotask(() => scrollToEnd());
+      return;
+    }
+
+    const arrived = Math.max(0, n - seenCount);
+    seenCount = n;
+    // Your own send always lands you at the tail — nobody scrolls up, types,
+    // and wants to stay where they were while their message goes below.
+    const ownSend =
+      arrived > 0 && messages()[n - 1]?.sender_type === "user";
+    if (untrack(atBottom) || ownSend) {
       // Scroll the *container*, not a sentinel: scrollIntoView aligns the
       // sentinel's edge with the viewport and leaves the feed's bottom padding
       // below the fold, so the last bubble ends up flush against the composer.
       queueMicrotask(() => scrollToEnd());
       setNewCount(0);
-    } else if (n) {
-      setNewCount((c) => c + 1);
+      setAtBottom(true);
+    } else if (arrived > 0) {
+      setNewCount((c) => c + arrived);
     }
   });
 
@@ -120,7 +150,14 @@ export function MessageList() {
                     </div>
                   </Show>
 
-                  <div classList={{ "mt-3": info().first && !info().divider }}>
+                  {/* A breath between grouped bubbles; a bigger one between
+                      groups. Zero margin welded consecutive replies together. */}
+                  <div
+                    classList={{
+                      "mt-3": info().first && !info().divider,
+                      "mt-1.5": !info().first,
+                    }}
+                  >
                     <Show
                       when={m.sender_type !== "user"}
                       fallback={
@@ -166,7 +203,7 @@ export function MessageList() {
                               </div>
                             </Show>
 
-                            <div class="flex flex-col gap-1">
+                            <div class="flex flex-col gap-1.5">
                               <For each={splitChunks(m.content)}>
                                 {(part, pi) => {
                                   const parts = splitChunks(m.content);
@@ -185,6 +222,9 @@ export function MessageList() {
                                       showMeta={info().last && isLastPart()}
                                       first={info().first && pi() === 0}
                                       last={info().last && isLastPart()}
+                                      actionable={
+                                        i() === messages().length - 1 && isLastPart()
+                                      }
                                     />
                                   );
                                 }}
