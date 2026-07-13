@@ -1,7 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
-import { AccountMenu } from "~/components/account-menu";
 import { AgentListItem } from "~/components/agent-list-item";
 import { AddAgentModal } from "~/components/add-agent-modal";
 import { actions, state } from "~/lib/store";
@@ -11,8 +10,9 @@ import { actions, state } from "~/lib/store";
  *
  * The AULAR system agent is pinned at the top (it is how you build the rest of
  * the team), staff below, ordered by recent activity like a messenger. A search
- * box filters by name or role. The account sits at the foot, because that is
- * where people look for it.
+ * box filters by name or role. Hiring sits at the foot as a real button — the
+ * one action that grows the org shouldn't hide behind a 24px "+". (The account
+ * lives in the title bar, beside the window controls.)
  */
 export function Sidebar() {
   const [hiring, setHiring] = createSignal(false);
@@ -47,20 +47,10 @@ export function Sidebar() {
 
   return (
     <aside class="flex w-[270px] min-w-0 shrink-0 flex-col overflow-hidden border-r border-v2-border-border-muted bg-v2-background-bg-base">
-      <div class="flex h-9 shrink-0 items-center justify-between pl-3 pr-2">
+      <div class="flex h-9 shrink-0 items-center pl-3 pr-2">
         <span class="text-[11px] font-medium tracking-[0.08em] text-v2-text-text-muted">
           AGENTS
         </span>
-        <button
-          type="button"
-          aria-label="Hire an agent"
-          title={capped() ? "Agent limit reached" : "Hire an agent"}
-          disabled={capped()}
-          onClick={() => setHiring(true)}
-          class="flex size-6 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base disabled:opacity-30"
-        >
-          <Icon name="plus-small" size="small" />
-        </button>
       </div>
 
       <div class="shrink-0 px-2 pb-2">
@@ -132,7 +122,19 @@ export function Sidebar() {
         </div>
       </Show>
 
-      <AccountMenu />
+      {/* The foot of the list is where the list grows. */}
+      <div class="shrink-0 border-t border-v2-border-border-muted p-2">
+        <button
+          type="button"
+          disabled={capped()}
+          title={capped() ? "Agent limit reached" : "Hire an agent"}
+          onClick={() => setHiring(true)}
+          class="flex w-full items-center justify-center gap-1.5 rounded-md bg-v2-background-bg-accent px-3 py-2 text-[12.5px] font-medium text-v2-text-text-inverse transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          <Icon name="plus-small" size="small" />
+          Hire an agent
+        </button>
+      </div>
 
       <Show when={hiring()}>
         <AddAgentModal onClose={() => setHiring(false)} />

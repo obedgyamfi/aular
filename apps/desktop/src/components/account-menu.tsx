@@ -5,7 +5,7 @@ import { Avatar } from "~/components/avatar";
 import { actions, state } from "~/lib/store";
 
 /**
- * The account, at the foot of the sidebar.
+ * The account, up in the title bar beside the window controls.
  *
  * Who you're signed in as, and the way out. The account matters here: your
  * agents run on this machine, but the organization — who they are, what they
@@ -25,15 +25,29 @@ export function AccountMenu() {
   const name = () => user()?.display_name || user()?.email?.split("@")[0] || "Account";
 
   return (
-    <div ref={root} class="relative shrink-0 border-t border-v2-border-border-muted p-2">
+    <div ref={root} class="relative flex items-center">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open()}
+        aria-label={`Account — ${name()}`}
+        title={name()}
+        class="flex size-7 items-center justify-center rounded transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+      >
+        <Avatar name={name()} size={22} />
+      </button>
+
       <Show when={open()}>
-        <div class="absolute bottom-full left-2 right-2 z-40 mb-1 overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
-          <div class="border-b border-v2-border-border-muted px-3 py-2">
-            <div class="truncate text-[12px] font-medium text-v2-text-text-base">
-              {name()}
-            </div>
-            <div class="truncate text-[10.5px] text-v2-text-text-faint">
-              {user()?.email}
+        <div class="absolute right-0 top-full z-40 mt-1.5 w-[228px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+          <div class="flex items-center gap-2.5 border-b border-v2-border-border-muted px-3 py-2">
+            <Avatar name={name()} size={28} />
+            <div class="min-w-0">
+              <div class="truncate text-[12px] font-medium text-v2-text-text-base">
+                {name()}
+              </div>
+              <div class="truncate text-[10.5px] text-v2-text-text-faint">
+                {user()?.email}
+              </div>
             </div>
           </div>
 
@@ -64,24 +78,6 @@ export function AccountMenu() {
           />
         </div>
       </Show>
-
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open()}
-        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-      >
-        <Avatar name={name()} size={26} />
-        <span class="flex min-w-0 flex-1 flex-col">
-          <span class="truncate text-[12px] text-v2-text-text-base">{name()}</span>
-          <span class="truncate text-[10.5px] text-v2-text-text-faint">
-            {user()?.email}
-          </span>
-        </span>
-        <span class="shrink-0 text-v2-icon-icon-muted">
-          <Icon name="chevron-grabber-vertical" size="small" />
-        </span>
-      </button>
     </div>
   );
 }

@@ -1,16 +1,19 @@
 import { Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
+import { AccountMenu } from "~/components/account-menu";
 import { AppMenu } from "~/components/app-menu";
 import { Logo } from "~/components/logo";
+import { Notifications } from "~/components/notifications";
 import { WindowControls } from "~/components/window-controls";
-import { actions, canGoBack, canGoForward } from "~/lib/store";
+import { actions, canGoBack, canGoForward, state } from "~/lib/store";
 import { toggleSidebar } from "~/lib/window";
 
 /**
  * The title bar, laid out like opencode's: the ☰ app menu, the sidebar toggle,
- * search, and back/forward on the left; the window controls hard right. The
- * empty middle is the drag region — grab anywhere and the window moves.
+ * search, and back/forward on the left; notifications, the account, and the
+ * window controls hard right. The empty middle is the drag region — grab
+ * anywhere and the window moves.
  *
  * Back and forward walk the view history — the registers and agents you've been
  * through — the same way a browser does.
@@ -63,6 +66,14 @@ export function TitleBar(props: { engine?: string; onSearch?: () => void }) {
           <span class="font-mono text-[11px] text-v2-text-text-faint">{props.engine}</span>
         </Show>
       </div>
+
+      {/* You, beside the window controls — signed-in surfaces only. */}
+      <Show when={state.user}>
+        <div class="flex shrink-0 items-center gap-0.5 pr-1.5">
+          <Notifications />
+          <AccountMenu />
+        </div>
+      </Show>
 
       <Show when={!isMac}>
         <WindowControls />
