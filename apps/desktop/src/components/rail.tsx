@@ -33,6 +33,18 @@ export function Rail() {
           </button>
         )}
       </For>
+
+      <div class="flex-1" />
+
+      <button
+        type="button"
+        aria-label="Settings"
+        aria-current={state.register === "settings"}
+        onClick={() => actions.setRegister("settings")}
+        class="flex size-8 items-center justify-center rounded-md text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base aria-[current=true]:bg-v2-overlay-simple-overlay-pressed aria-[current=true]:text-v2-icon-icon-accent"
+      >
+        <Icon name="settings-gear" size="small" />
+      </button>
     </nav>
   );
 }

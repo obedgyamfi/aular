@@ -114,11 +114,18 @@ export function WorkPanel() {
   );
 }
 
-/** Agent output as a document block — full width, markdown, no bubble. */
+/**
+ * Agent output as a document block — full width, markdown, no bubble.
+ *
+ * Chat splits a reply into bubbles on <<<AULAR_CHUNK>>>; the work register reads
+ * the turn as one document, so the marker is stripped. Leave it in and the HTML
+ * sanitizer treats <AULAR_CHUNK> as a tag, drops it, and prints "<<>>".
+ */
 function AgentBlock(props: { message: Message }) {
+  const content = () => props.message.content.replace(/<<<AULAR_CHUNK>>>/g, "\n\n");
   return (
     <div class="py-2 text-[13.5px] leading-relaxed text-v2-text-text-base">
-      <Markdown content={props.message.content} />
+      <Markdown content={content()} />
       <Show when={props.message.streaming}>
         <span class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-v2-icon-icon-accent align-middle" />
       </Show>

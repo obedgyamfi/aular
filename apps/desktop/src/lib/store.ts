@@ -1,47 +1,157 @@
 import { createStore, produce } from "solid-js/store";
 
 import { api, openRealtime } from "./api";
-import type { Agent, AuthUser, Health, Message, RealtimeEvent, ToolCall } from "./types";
+import type {
+  Agent,
+  AuthUser,
+  Health,
+  MediaDescriptor,
+  Message,
+  ModelSettings,
+  RealtimeEvent,
+  ToolCall,
+} from "./types";
 
 /**
- * The app's state. One store, mutated through named actions — the same shape
- * the old AULAR used, which kept realtime and REST from fighting each other.
+ * The app's state.
+ *
+ * Shaped like the prototype's store, because that shape was earned: realtime
+ * and REST both write here, and keeping per-agent view state (unread, preview,
+ * typing) separate from the message log is what stops them fighting.
  */
-export type Register = "chat" | "work" | "org";
+export type Register = "chat" | "work" | "org" | "settings";
+
+/** The settings section to land on — set by whatever sent you there. */
+export type SettingsSection =
+  | "general"
+  | "appearance"
+  | "chats"
+  | "model"
+  | "usage"
+  | "memory"
+  | "about";
+
+/** One stop in the view history — what back/forward walk through. */
+export interface View {
+  register: Register;
+  agentId: string | null;
+}
+
+/** What the chat list shows beneath an agent's name. */
+export interface Preview {
+  text: string;
+  at: string;
+  sender: "user" | "agent" | "system";
+}
 
 interface State {
   register: Register;
+  settingsSection: SettingsSection;
   user: AuthUser | null;
   health: Health | null;
+  model: ModelSettings | null;
+
   agents: Agent[];
   activeAgentId: string | null;
-  /** agent id → its conversation id */
+
+  /** agent id → conversation id, and the reverse. */
   conversationOf: Record<string, string>;
-  /** conversation id → messages, oldest first */
+  agentOf: Record<string, string>;
+
   messages: Record<string, Message[]>;
-  /** conversation id → tool calls */
   toolCalls: Record<string, ToolCall[]>;
+
+  /** per-agent chat-list state */
+  unread: Record<string, number>;
+  preview: Record<string, Preview>;
+
   /** conversation id → the agent is working right now */
   working: Record<string, boolean>;
+  /** message id → still streaming in */
+  streaming: Record<string, boolean>;
+
+  /** the message being replied to, and a staged attachment */
+  replyTo: Message | null;
+  attachment: MediaDescriptor | null;
+
+  /** Where you've been, and where you are in it. */
+  history: View[];
+  historyAt: number;
+
   error: string | null;
 }
 
 const [state, set] = createStore<State>({
   register: "chat",
+  settingsSection: "general",
   user: null,
   health: null,
+  model: null,
   agents: [],
   activeAgentId: null,
   conversationOf: {},
+  agentOf: {},
   messages: {},
   toolCalls: {},
+  unread: {},
+  preview: {},
   working: {},
+  streaming: {},
+  replyTo: null,
+  attachment: null,
+  history: [{ register: "chat", agentId: null }],
+  historyAt: 0,
   error: null,
 });
 
 export { state };
 
 let stopRealtime: (() => void) | null = null;
+
+/**
+ * True while back/forward are replaying a view, so the replay doesn't record
+ * itself as a new stop in the history.
+ */
+let replaying = false;
+
+function pushView(view: View) {
+  if (replaying) return;
+  const current = state.history[state.historyAt];
+  if (current?.register === view.register && current?.agentId === view.agentId) return;
+
+  set(
+    produce((s: State) => {
+      // Moving somewhere new from a rewound history drops the forward branch —
+      // the same rule a browser uses.
+      s.history = [...s.history.slice(0, s.historyAt + 1), view].slice(-50);
+      s.historyAt = s.history.length - 1;
+    }),
+  );
+}
+
+async function replay(index: number) {
+  const view = state.history[index];
+  if (!view) return;
+  replaying = true;
+  try {
+    set("historyAt", index);
+    set("register", view.register);
+    if (view.agentId && view.agentId !== state.activeAgentId) {
+      await actions.openAgent(view.agentId);
+    }
+  } finally {
+    replaying = false;
+  }
+}
+
+/** Agent replies, for anything that needs to react to them (notifications). */
+type ReplyListener = (message: Message, agentId: string | undefined) => void;
+const replyListeners = new Set<ReplyListener>();
+
+export function onAgentReply(fn: ReplyListener): () => void {
+  replyListeners.add(fn);
+  return () => replyListeners.delete(fn);
+}
 
 export const actions = {
   setUser(user: AuthUser | null) {
@@ -50,26 +160,95 @@ export const actions = {
 
   setRegister(register: Register) {
     set("register", register);
+    pushView({ register, agentId: state.activeAgentId });
   },
 
-  /** Everything the app needs once signed in. */
+  /** Open Settings on a particular section — used by the composer's model badge
+   *  and anything else that points at a specific setting. */
+  openSettings(section: SettingsSection) {
+    set("settingsSection", section);
+    actions.setRegister("settings");
+  },
+
+  back() {
+    if (canGoBack()) void replay(state.historyAt - 1);
+  },
+
+  forward() {
+    if (canGoForward()) void replay(state.historyAt + 1);
+  },
+
+  /**
+   * Everything the app needs once signed in. Conversations carry the chat
+   * list's unread counts and last-message previews, so the whole list loads in
+   * one round-trip instead of one per row.
+   */
   async load() {
-    const [health, agents] = await Promise.all([api.health(), api.listAgents()]);
-    set({ health, agents, error: null });
+    const [health, agents, convos, model] = await Promise.all([
+      api.health().catch(() => null),
+      api.listAgents(),
+      api.listConversations().then((c) => c ?? []),
+      api.getModelSettings().catch(() => null),
+    ]);
+
+    set(
+      produce((s: State) => {
+        s.health = health;
+        s.agents = agents;
+        s.model = model;
+        s.error = null;
+        for (const c of convos) {
+          s.conversationOf[c.agent_profile_id] = c.id;
+          s.agentOf[c.id] = c.agent_profile_id;
+          s.unread[c.agent_profile_id] = c.unread_count ?? 0;
+          if (c.last_message && c.last_message_at) {
+            s.preview[c.agent_profile_id] = {
+              text: c.last_message,
+              at: c.last_message_at,
+              sender: (c.last_message_sender as Preview["sender"]) ?? "agent",
+            };
+          }
+        }
+      }),
+    );
+
     stopRealtime?.();
     stopRealtime = openRealtime(handleEvent);
+  },
+
+  /** Re-sync after a dropped socket — the prototype's fix for stuck rows. */
+  async resync() {
+    try {
+      await actions.load();
+      const id = activeConversationId();
+      if (id) {
+        const msgs = await api.listMessages(id);
+        set("messages", id, (msgs ?? []).slice().reverse());
+      }
+    } catch {
+      /* offline; the socket will retry */
+    }
   },
 
   async signOut() {
     stopRealtime?.();
     stopRealtime = null;
     await api.logout();
-    set({ user: null, agents: [], activeAgentId: null, messages: {}, toolCalls: {} });
+    set({
+      user: null,
+      agents: [],
+      activeAgentId: null,
+      messages: {},
+      toolCalls: {},
+      unread: {},
+      preview: {},
+    });
   },
 
-  /** Open an agent: resolve (or start) its conversation and pull the history. */
+  /** Open an agent: resolve (or start) its conversation and pull its history. */
   async openAgent(agentId: string) {
     set("activeAgentId", agentId);
+    pushView({ register: state.register, agentId });
     let convoId = state.conversationOf[agentId];
 
     if (!convoId) {
@@ -77,34 +256,65 @@ export const actions = {
       const convo = existing[0] ?? (await api.createConversation(agentId));
       convoId = convo.id;
       set("conversationOf", agentId, convoId);
+      set("agentOf", convoId, agentId);
     }
 
     const [msgs, tools] = await Promise.all([
       api.listMessages(convoId),
-      api.listToolCalls(convoId),
+      api.listToolCalls(convoId).catch(() => []),
     ]);
     // The API returns newest-first; the UI reads oldest-first.
     set("messages", convoId, (msgs ?? []).slice().reverse());
     set("toolCalls", convoId, (tools ?? []).slice().reverse());
 
     void api.markAgentRead(agentId).catch(() => {});
-    set("agents", (a) => a.id === agentId, "unread_count", 0);
+    set("unread", agentId, 0);
   },
 
-  /** Send a turn. The reply arrives over the WebSocket, not in the response. */
+  /** Send a turn. The reply arrives over the socket, not in the response. */
   async send(content: string) {
     const agentId = state.activeAgentId;
     if (!agentId) return;
     const convoId = state.conversationOf[agentId];
     if (!convoId) return;
 
+    const media = state.attachment ? [state.attachment] : undefined;
+    const replyTo = state.replyTo?.id;
+
+    set({ replyTo: null, attachment: null });
     set("working", convoId, true);
+
     try {
-      await api.sendMessage(convoId, content);
+      await api.sendMessage(convoId, content, replyTo, media);
     } catch (e) {
       set("working", convoId, false);
       set("error", (e as Error).message);
     }
+  },
+
+  async deleteMessage(m: Message) {
+    try {
+      await api.deleteMessage(m.conversation_id, m.id);
+    } catch (e) {
+      set("error", (e as Error).message);
+    }
+  },
+
+  setReplyTo(m: Message | null) {
+    set("replyTo", m);
+  },
+
+  async attach(file: File) {
+    try {
+      const descriptor = await api.uploadMedia(file);
+      set("attachment", descriptor);
+    } catch (e) {
+      set("error", (e as Error).message);
+    }
+  },
+
+  clearAttachment() {
+    set("attachment", null);
   },
 
   async createAgent(input: Partial<Agent>) {
@@ -113,8 +323,26 @@ export const actions = {
     return agent;
   },
 
-  dismissError() {
-    set("error", null);
+  async updateAgent(id: string, patch: Partial<Agent>) {
+    const agent = await api.updateAgent(id, patch);
+    set("agents", (a) => a.id === id, agent);
+    return agent;
+  },
+
+  async deleteAgent(id: string) {
+    await api.deleteAgent(id);
+    set("agents", (list) => list.filter((a) => a.id !== id));
+    if (state.activeAgentId === id) set("activeAgentId", null);
+  },
+
+  async saveModel(input: Parameters<typeof api.updateModelSettings>[0]) {
+    const res = await api.updateModelSettings(input);
+    set("model", res.config);
+    return res;
+  },
+
+  setError(message: string | null) {
+    set("error", message);
   },
 };
 
@@ -131,13 +359,25 @@ function handleEvent(e: RealtimeEvent) {
           const list = s.messages[convoId] ?? (s.messages[convoId] = []);
           if (!list.some((m) => m.id === msg.id)) list.push(msg);
           if (msg.sender_type === "agent") s.working[convoId] = false;
-          // An agent that isn't open gets an unread badge.
-          const agent = s.agents.find((a) => s.conversationOf[a.id] === convoId);
-          if (agent && msg.sender_type !== "user" && s.activeAgentId !== agent.id) {
-            agent.unread_count = (agent.unread_count ?? 0) + 1;
+
+          const agentId = s.agentOf[convoId];
+          if (agentId) {
+            s.preview[agentId] = {
+              text: msg.content,
+              at: msg.created_at,
+              sender: msg.sender_type,
+            };
+            if (msg.sender_type !== "user" && s.activeAgentId !== agentId) {
+              s.unread[agentId] = (s.unread[agentId] ?? 0) + 1;
+            }
           }
         }),
       );
+
+      if (msg.sender_type === "agent") {
+        const agentId = state.agentOf[convoId];
+        for (const fn of replyListeners) fn(msg, agentId);
+      }
       return;
     }
 
@@ -150,9 +390,28 @@ function handleEvent(e: RealtimeEvent) {
           const i = list.findIndex((m) => m.id === msg.id);
           if (i === -1) list.push(msg);
           else list[i] = { ...list[i]!, ...msg };
-          if (!msg.streaming) s.working[convoId] = false;
+
+          s.streaming[msg.id] = !!msg.streaming;
+          if (!msg.streaming) {
+            s.working[convoId] = false;
+            const agentId = s.agentOf[convoId];
+            if (agentId) {
+              s.preview[agentId] = {
+                text: msg.content,
+                at: msg.created_at,
+                sender: msg.sender_type,
+              };
+            }
+          }
         }),
       );
+      return;
+    }
+
+    case "message.deleted": {
+      const id = e.data?.id as string | undefined;
+      if (!convoId || !id) return;
+      set("messages", convoId, (list) => (list ?? []).filter((m) => m.id !== id));
       return;
     }
 
@@ -168,7 +427,8 @@ function handleEvent(e: RealtimeEvent) {
       if (!tc?.conversation_id) return;
       set(
         produce((s: State) => {
-          const list = s.toolCalls[tc.conversation_id] ?? (s.toolCalls[tc.conversation_id] = []);
+          const list =
+            s.toolCalls[tc.conversation_id] ?? (s.toolCalls[tc.conversation_id] = []);
           const i = list.findIndex((t) => t.id === tc.id);
           if (i === -1) list.push(tc);
           else list[i] = tc;
@@ -179,7 +439,9 @@ function handleEvent(e: RealtimeEvent) {
 
     case "agent.created": {
       const agent = e.data as Agent;
-      set("agents", (list) => (list.some((a) => a.id === agent.id) ? list : [...list, agent]));
+      set("agents", (list) =>
+        list.some((a) => a.id === agent.id) ? list : [...list, agent],
+      );
       return;
     }
 
@@ -191,7 +453,8 @@ function handleEvent(e: RealtimeEvent) {
   }
 }
 
-// ── selectors ───────────────────────────────────────────────────────────
+// ── selectors ───────────────────────────────────────────────────────────────
+
 export const activeConversationId = () =>
   state.activeAgentId ? state.conversationOf[state.activeAgentId] : undefined;
 
@@ -207,3 +470,15 @@ export const activeWorking = (): boolean => {
 
 export const activeAgent = (): Agent | undefined =>
   state.agents.find((a) => a.id === state.activeAgentId);
+
+/** Is this agent working right now? Drives the typing row in the chat list. */
+export const agentWorking = (agentId: string): boolean => {
+  const convoId = state.conversationOf[agentId];
+  return convoId ? !!state.working[convoId] : false;
+};
+
+export const canGoBack = (): boolean => state.historyAt > 0;
+export const canGoForward = (): boolean => state.historyAt < state.history.length - 1;
+
+export const totalUnread = (): number =>
+  Object.values(state.unread).reduce((a, b) => a + b, 0);

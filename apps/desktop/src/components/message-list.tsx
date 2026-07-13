@@ -1,83 +1,263 @@
-import { createEffect, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 
-import { Markdown } from "~/components/markdown";
-import { activeMessages, activeWorking, state, activeConversationId } from "~/lib/store";
+import { Avatar } from "~/components/avatar";
+import { MessageBubble } from "~/components/message-bubble";
+import { activeAgent, activeMessages, activeWorking, state } from "~/lib/store";
 import type { Message } from "~/lib/types";
 
 /**
- * The conversation. Agent replies grow in place while they stream (the
- * `streaming` flag rides on message.updated), so the text appears token by
- * token instead of arriving as a wall.
+ * The conversation — ported from the prototype's MessageList.
+ *
+ * Messages are grouped: consecutive turns from the same side within a few
+ * minutes read as one utterance, with the sender's name and avatar shown once
+ * at the top of the group. Time dividers mark day breaks and long lulls, so the
+ * thread has a shape. A long agent reply arrives split into chat-sized bubbles
+ * (the <<<AULAR_CHUNK>>> markers the backend emits).
  */
-export function MessageList() {
-  let bottom: HTMLDivElement | undefined;
+const GROUP_GAP_MS = 5 * 60 * 1000;
+const LULL_MS = 30 * 60 * 1000;
 
-  // Follow the tail as content arrives.
-  createEffect(() => {
-    activeMessages().length;
-    activeWorking();
-    queueMicrotask(() => bottom?.scrollIntoView({ block: "end" }));
+export function MessageList() {
+  const messages = () => activeMessages();
+  const agent = () => activeAgent();
+
+  let scroller: HTMLDivElement | undefined;
+  let bottom: HTMLDivElement | undefined;
+  const [atBottom, setAtBottom] = createSignal(true);
+  const [newCount, setNewCount] = createSignal(0);
+
+  const byId = createMemo(() => {
+    const map = new Map<string, Message>();
+    for (const m of messages()) map.set(m.id, m);
+    return map;
   });
 
+  /** Per-message grouping and divider info. */
+  const meta = createMemo(() =>
+    messages().map((m, i) => {
+      const list = messages();
+      const prev = list[i - 1];
+      const next = list[i + 1];
+
+      const day = dayLabel(m.created_at);
+      const dayBreak = !prev || day !== dayLabel(prev.created_at);
+
+      const first = !prev || side(prev) !== side(m) || dayBreak || gap(prev, m) > GROUP_GAP_MS;
+      const last =
+        !next ||
+        side(next) !== side(m) ||
+        day !== dayLabel(next.created_at) ||
+        gap(m, next) > GROUP_GAP_MS;
+
+      // A full "day, time" on a day break; a bare clock when the conversation
+      // resumes after a lull. Otherwise nothing — silence is the default.
+      const time = new Date(m.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const divider = dayBreak
+        ? `${day} ${time}`
+        : gap(prev, m) > LULL_MS
+          ? time
+          : "";
+
+      return { first, last, divider };
+    }),
+  );
+
+  // Follow the tail only when the reader is already there; otherwise count what
+  // they're missing and offer a jump. Yanking someone's scroll is hostile.
+  createEffect(() => {
+    const n = messages().length;
+    activeWorking();
+    if (atBottom()) {
+      queueMicrotask(() => bottom?.scrollIntoView({ block: "end" }));
+      setNewCount(0);
+    } else if (n) {
+      setNewCount((c) => c + 1);
+    }
+  });
+
+  const onScroll = () => {
+    if (!scroller) return;
+    const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    const near = distance < 120;
+    setAtBottom(near);
+    if (near) setNewCount(0);
+  };
+
+  const jump = () => {
+    bottom?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setAtBottom(true);
+    setNewCount(0);
+  };
+
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <div class="mx-auto flex w-full max-w-[760px] flex-col gap-4 px-4 py-6">
-        <For each={activeMessages()}>{(m) => <Bubble message={m} />}</For>
+    <div class="relative min-h-0 flex-1">
+      <div ref={scroller} onScroll={onScroll} class="h-full overflow-y-auto">
+        <div class="mx-auto flex w-full max-w-[820px] flex-col px-4 py-5">
+          <For each={messages()}>
+            {(m, i) => {
+              const info = () => meta()[i()]!;
+              const quoted = () =>
+                m.reply_to_message_id ? byId().get(m.reply_to_message_id) : undefined;
 
-        <Show when={activeWorking()}>
-          <div class="flex items-center gap-2 text-[12px] text-v2-text-text-weak">
-            <span class="size-1.5 animate-pulse rounded-full bg-v2-icon-icon-accent" />
-            working…
-          </div>
-        </Show>
+              return (
+                <div class="flex flex-col">
+                  <Show when={info().divider}>
+                    <div class="flex justify-center py-3">
+                      <span class="text-[11px] text-v2-text-text-weak">
+                        {info().divider}
+                      </span>
+                    </div>
+                  </Show>
 
-        <div ref={bottom} />
+                  <div classList={{ "mt-3": info().first && !info().divider }}>
+                    <Show
+                      when={m.sender_type !== "user"}
+                      fallback={
+                        <MessageBubble
+                          message={m}
+                          repliedTo={quoted()}
+                          agentName={agent()?.name ?? "Agent"}
+                          streaming={!!state.streaming[m.id]}
+                          showReplyQuote
+                          showMedia
+                          showMeta={info().last}
+                          first={info().first}
+                          last={info().last}
+                        />
+                      }
+                    >
+                      <Show
+                        when={m.sender_type !== "system"}
+                        fallback={
+                          <MessageBubble
+                            message={m}
+                            agentName={agent()?.name ?? "Agent"}
+                            showMeta={false}
+                          />
+                        }
+                      >
+                        {/* Incoming group: the sender's name above the group's
+                            first bubble, the avatar in a gutter beside it. */}
+                        <div class="flex gap-2">
+                          <div
+                            class="w-8 shrink-0 self-start"
+                            classList={{ "pt-[18px]": info().first }}
+                          >
+                            <Show when={info().first}>
+                              <Avatar name={agent()?.name ?? "Agent"} size={28} />
+                            </Show>
+                          </div>
+
+                          <div class="min-w-0 flex-1">
+                            <Show when={info().first}>
+                              <div class="mb-0.5 px-1 text-[11px] text-v2-text-text-weak">
+                                {agent()?.name ?? "Agent"}
+                              </div>
+                            </Show>
+
+                            <div class="flex flex-col gap-1">
+                              <For each={splitChunks(m.content)}>
+                                {(part, pi) => {
+                                  const parts = splitChunks(m.content);
+                                  const isLastPart = () => pi() === parts.length - 1;
+                                  return (
+                                    <MessageBubble
+                                      message={m}
+                                      contentOverride={part}
+                                      repliedTo={quoted()}
+                                      agentName={agent()?.name ?? "Agent"}
+                                      streaming={
+                                        !!state.streaming[m.id] && isLastPart()
+                                      }
+                                      showReplyQuote={pi() === 0}
+                                      showMedia={pi() === 0}
+                                      showMeta={info().last && isLastPart()}
+                                      first={info().first && pi() === 0}
+                                      last={info().last && isLastPart()}
+                                    />
+                                  );
+                                }}
+                              </For>
+                            </div>
+                          </div>
+                        </div>
+                      </Show>
+                    </Show>
+                  </div>
+                </div>
+              );
+            }}
+          </For>
+
+          <Show when={activeWorking()}>
+            <div class="flex items-center gap-2 pl-10 pt-3">
+              <TypingDots />
+            </div>
+          </Show>
+
+          <div ref={bottom} />
+        </div>
       </div>
+
+      <Show when={!atBottom() && newCount() > 0}>
+        <button
+          type="button"
+          onClick={jump}
+          class="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1.5 text-[11px] text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+        >
+          {newCount()} new message{newCount() === 1 ? "" : "s"} ↓
+        </button>
+      </Show>
     </div>
   );
 }
 
-function Bubble(props: { message: Message }) {
-  const m = () => props.message;
-
+function TypingDots() {
   return (
-    <Show
-      when={m().sender_type !== "user"}
-      fallback={
-        <div class="flex justify-end">
-          <div class="max-w-[80%] rounded-lg rounded-br-sm bg-v2-background-bg-accent px-3 py-2 text-[13px] leading-relaxed text-v2-text-text-inverse">
-            <span data-selectable class="whitespace-pre-wrap">
-              {m().content}
-            </span>
-          </div>
-        </div>
-      }
-    >
-      <Show
-        when={m().sender_type !== "system"}
-        fallback={
-          <div class="flex justify-center">
-            <span class="rounded-full bg-v2-background-bg-layer-02 px-3 py-1 text-[11px] text-v2-text-text-muted">
-              {m().content}
-            </span>
-          </div>
-        }
-      >
-        <div class="flex flex-col gap-1">
-          <span class="text-[11px] font-medium text-v2-text-text-muted">
-            {state.agents.find((a) => a.id === m().sender_id)?.name ?? "Agent"}
-          </span>
-          <div class="text-[13px] leading-relaxed text-v2-text-text-base">
-            <Markdown content={m().content} />
-            <Show when={m().streaming}>
-              <span class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-v2-icon-icon-accent align-middle" />
-            </Show>
-          </div>
-        </div>
-      </Show>
-    </Show>
+    <span class="flex items-center gap-1 rounded-lg bg-v2-background-bg-layer-02 px-3 py-2">
+      <For each={[0, 200, 400]}>
+        {(delay) => (
+          <span
+            class="size-1.5 animate-bounce rounded-full bg-v2-icon-icon-muted"
+            style={{ "animation-duration": "1s", "animation-delay": `${delay}ms` }}
+          />
+        )}
+      </For>
+    </span>
   );
 }
 
-/** The active conversation's id — exported so panes can key off it. */
-export { activeConversationId };
+/** A long reply arrives split into chat-sized bubbles. */
+function splitChunks(content: string): string[] {
+  const parts = content
+    .split("<<<AULAR_CHUNK>>>")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [content];
+}
+
+const side = (m: Message) => (m.sender_type === "user" ? "user" : "agent");
+
+const gap = (a?: Message, b?: Message) =>
+  a && b
+    ? Math.abs(new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    : Infinity;
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (d.toDateString() === now.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}

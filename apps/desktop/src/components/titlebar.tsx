@@ -4,17 +4,21 @@ import { Icon } from "@opencode-ai/ui/icon";
 import { AppMenu } from "~/components/app-menu";
 import { Logo } from "~/components/logo";
 import { WindowControls } from "~/components/window-controls";
+import { actions, canGoBack, canGoForward } from "~/lib/store";
 import { toggleSidebar } from "~/lib/window";
 
 /**
  * The title bar, laid out like opencode's: the ☰ app menu, the sidebar toggle,
  * search, and back/forward on the left; the window controls hard right. The
  * empty middle is the drag region — grab anywhere and the window moves.
+ *
+ * Back and forward walk the view history — the registers and agents you've been
+ * through — the same way a browser does.
  */
 const HEIGHT = 36;
 const isMac = navigator.userAgent.includes("Mac");
 
-export function TitleBar(props: { engine?: string }) {
+export function TitleBar(props: { engine?: string; onSearch?: () => void }) {
   return (
     <div
       data-slot="titlebar-v2"
@@ -32,10 +36,25 @@ export function TitleBar(props: { engine?: string }) {
         </div>
         <AppMenu />
         <ToolbarButton label="Toggle sidebar" icon="sidebar" onClick={toggleSidebar} />
-        <ToolbarButton label="Search" icon="magnifying-glass" />
+        <ToolbarButton
+          label="Search — ⌘K"
+          icon="magnifying-glass"
+          disabled={!props.onSearch}
+          onClick={props.onSearch}
+        />
         <span class="mx-1 h-4 w-px bg-v2-border-border-muted" />
-        <ToolbarButton label="Back" icon="arrow-left" disabled />
-        <ToolbarButton label="Forward" icon="arrow-right" disabled />
+        <ToolbarButton
+          label="Back"
+          icon="arrow-left"
+          disabled={!canGoBack()}
+          onClick={() => actions.back()}
+        />
+        <ToolbarButton
+          label="Forward"
+          icon="arrow-right"
+          disabled={!canGoForward()}
+          onClick={() => actions.forward()}
+        />
       </div>
 
       {/* The drag region: everything not a control. */}

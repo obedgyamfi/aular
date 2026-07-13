@@ -1,8 +1,13 @@
-import { createMemo, createResource, For, Show } from "solid-js";
+import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 
+import { AddAgentModal } from "~/components/add-agent-modal";
+import { OrgChart } from "~/components/org-chart";
+import { OrgDocs } from "~/components/org-docs";
 import { api } from "~/lib/api";
 import { state } from "~/lib/store";
 import type { AgentTokenUsage, DailyTokens } from "~/lib/types";
+
+type Tab = "overview" | "chart" | "docs" | "build";
 
 /**
  * The Organization register — ported from the prototype's OrgOverview.
@@ -14,36 +19,119 @@ import type { AgentTokenUsage, DailyTokens } from "~/lib/types";
  * the work — not an estimate.
  */
 export function OrgPanel() {
+  const [tab, setTab] = createSignal<Tab>("overview");
+
+  return (
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-v2-background-bg-base">
+      <div class="flex h-11 shrink-0 items-center gap-1 border-b border-v2-border-border-muted px-4">
+        <TabBtn active={tab() === "overview"} onClick={() => setTab("overview")}>
+          Overview
+        </TabBtn>
+        <TabBtn active={tab() === "chart"} onClick={() => setTab("chart")}>
+          Org chart
+        </TabBtn>
+        <TabBtn active={tab() === "docs"} onClick={() => setTab("docs")}>
+          Knowledge bank
+        </TabBtn>
+        <TabBtn active={tab() === "build"} onClick={() => setTab("build")}>
+          Build
+        </TabBtn>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="mx-auto w-full max-w-[1000px] px-6 py-6">
+          <Show when={tab() === "overview"}>
+            <Overview />
+          </Show>
+          <Show when={tab() === "chart"}>
+            <OrgChart />
+          </Show>
+          <Show when={tab() === "docs"}>
+            <OrgDocs />
+          </Show>
+          <Show when={tab() === "build"}>
+            <Build />
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabBtn(props: { active: boolean; onClick: () => void; children: any }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      class="relative px-3 py-1.5 text-[12px] transition-colors"
+      classList={{
+        "text-v2-text-text-base": props.active,
+        "text-v2-text-text-muted hover:text-v2-text-text-base": !props.active,
+      }}
+    >
+      {props.children}
+      <Show when={props.active}>
+        <span class="absolute inset-x-2 -bottom-[1px] h-[2px] rounded-full bg-v2-icon-icon-accent" />
+      </Show>
+    </button>
+  );
+}
+
+/** Grow the team. The same three routes as the hire dialog, given room. */
+function Build() {
+  const [open, setOpen] = createSignal(false);
+  return (
+    <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-0.5">
+        <h2 class="text-[13px] font-medium text-v2-text-text-base">Build your org</h2>
+        <p class="text-[11.5px] text-v2-text-text-muted">
+          Hire from a role, describe what you need to AULAR, or write an agent
+          yourself.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        class="w-fit rounded-md bg-v2-background-bg-accent px-3 py-2 text-[12px] font-medium text-v2-text-text-inverse"
+      >
+        Hire an agent
+      </button>
+      <Show when={open()}>
+        <AddAgentModal onClose={() => setOpen(false)} />
+      </Show>
+    </div>
+  );
+}
+
+function Overview() {
   const [tokens] = createResource(() => api.getTokenUsage().catch(() => null));
   const [daily] = createResource(() => api.getAnalyticsDaily(14).catch(() => null));
 
   const totals = () => tokens()?.totals;
 
   return (
-    <div class="min-h-0 flex-1 overflow-y-auto bg-v2-background-bg-base">
-      <div class="mx-auto flex w-full max-w-[1000px] flex-col gap-5 px-6 py-6">
-        <div class="flex flex-col gap-0.5">
-          <h1 class="text-[15px] font-medium text-v2-text-text-base">Organization</h1>
-          <p class="text-[12px] text-v2-text-text-muted">
-            What your agents have actually done, and what it cost.
-          </p>
-        </div>
-
-        {/* KPI row — the prototype's tiles, same units. */}
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <Tile label="Tokens in" value={fmt(totals()?.input_tokens)} sub="all-time" />
-          <Tile label="Tokens out" value={fmt(totals()?.output_tokens)} sub="all-time" />
-          <Tile label="Tool calls" value={fmt(totals()?.tool_calls)} sub="all-time" />
-          <Tile label="Sessions" value={fmt(totals()?.sessions)} sub="all-time" />
-          <Tile label="Agents" value={String(state.agents.length)} sub="on staff" />
-        </div>
-
-        <TokensPerDay days={daily()?.tokens ?? []} />
-
-        <TokensByAgent rows={tokens()?.per_agent ?? []} />
-
-        <AgentTable rows={tokens()?.per_agent ?? []} />
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col gap-0.5">
+        <h2 class="text-[13px] font-medium text-v2-text-text-base">Overview</h2>
+        <p class="text-[11.5px] text-v2-text-text-muted">
+          What your agents have actually done, and what it cost.
+        </p>
       </div>
+
+      {/* KPI row — the prototype's tiles, same units. */}
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <Tile label="Tokens in" value={fmt(totals()?.input_tokens)} sub="all-time" />
+        <Tile label="Tokens out" value={fmt(totals()?.output_tokens)} sub="all-time" />
+        <Tile label="Tool calls" value={fmt(totals()?.tool_calls)} sub="all-time" />
+        <Tile label="Sessions" value={fmt(totals()?.sessions)} sub="all-time" />
+        <Tile label="Agents" value={String(state.agents.length)} sub="on staff" />
+      </div>
+
+      <TokensPerDay days={daily()?.tokens ?? []} />
+
+      <TokensByAgent rows={tokens()?.per_agent ?? []} />
+
+      <AgentTable rows={tokens()?.per_agent ?? []} />
     </div>
   );
 }

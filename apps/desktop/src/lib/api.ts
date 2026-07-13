@@ -1,13 +1,23 @@
 import type {
   Agent,
+  AgentTemplate,
   AnalyticsDaily,
   AuthUser,
   Conversation,
+  ConversationContext,
+  CreateRoutineInput,
   Health,
+  MediaDescriptor,
+  MemoryGraph,
   Message,
   ModelSettings,
+  ModelSettingsInput,
+  OrgDocument,
+  Routine,
+  ScheduledJob,
   TokenUsage,
   ToolCall,
+  ToolDefinition,
   UsageSummary,
 } from "./types";
 
@@ -77,10 +87,20 @@ export const api = {
     setSessionToken(out.token);
     return out.user;
   },
-  signup: async (email: string, password: string, displayName?: string) => {
+  signup: async (
+    email: string,
+    password: string,
+    inviteCode?: string,
+    displayName?: string,
+  ) => {
     const out = await call<{ user: AuthUser; token: string }>("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ email, password, display_name: displayName }),
+      body: JSON.stringify({
+        email,
+        password,
+        ...(inviteCode ? { invite_code: inviteCode } : {}),
+        ...(displayName ? { display_name: displayName } : {}),
+      }),
     });
     setSessionToken(out.token);
     return out.user;
@@ -102,8 +122,7 @@ export const api = {
   deleteAgent: (id: string) => v1<void>(`/agent-profiles/${id}`, { method: "DELETE" }),
   markAgentRead: (id: string) => v1<void>(`/agent-profiles/${id}/read`, { method: "POST" }),
 
-  listTemplates: () => v1<Agent[]>("/agent-profile-templates"),
-  listTools: () => v1<{ name: string; description: string; risk: string }[]>("/tool-definitions"),
+  listTemplates: () => v1<AgentTemplate[]>("/agent-profile-templates"),
 
   // ── conversations ─────────────────────────────────────────────────────
   listConversations: (agentId?: string) =>
@@ -117,11 +136,55 @@ export const api = {
     }),
   listMessages: (conversationId: string, limit = 60) =>
     v1<Message[] | null>(`/conversations/${conversationId}/messages?limit=${limit}`),
-  sendMessage: (conversationId: string, content: string) =>
+  sendMessage: (
+    conversationId: string,
+    content: string,
+    replyToMessageId?: string,
+    media?: MediaDescriptor[],
+  ) =>
     v1<{ user_message: Message }>(`/conversations/${conversationId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content,
+        ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+        ...(media?.length ? { media } : {}),
+      }),
     }),
+  deleteMessage: (conversationId: string, messageId: string) =>
+    v1<void>(`/conversations/${conversationId}/messages/${messageId}`, {
+      method: "DELETE",
+    }),
+  /** The composer's context meter. */
+  getContext: (conversationId: string) =>
+    v1<ConversationContext>(`/conversations/${conversationId}/context`),
+
+  /** Uploads an attachment. Raw fetch — the browser must set the multipart
+   *  boundary itself, so we cannot send our JSON content-type. */
+  uploadMedia: async (file: File): Promise<MediaDescriptor> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = sessionToken();
+    const res = await fetch(`${BASE}/api/v1/media`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+    return (await res.json()) as MediaDescriptor;
+  },
+
+  /** The knowledge bank — the org's memory. */
+  listDocuments: () => v1<OrgDocument[] | null>("/documents/"),
+  upsertDocument: (input: {
+    agent_profile_id?: string;
+    title: string;
+    kind?: string;
+    content: string;
+  }) =>
+    v1<OrgDocument>("/documents/", { method: "POST", body: JSON.stringify(input) }),
+  deleteDocument: (id: string) => v1<void>(`/documents/${id}`, { method: "DELETE" }),
+
+  listToolDefinitions: () => v1<ToolDefinition[]>("/tool-definitions"),
   listToolCalls: (conversationId: string, limit = 100) =>
     v1<ToolCall[] | null>(`/conversations/${conversationId}/tool-calls?limit=${limit}`),
 
@@ -129,16 +192,32 @@ export const api = {
   getTokenUsage: () => v1<TokenUsage>("/usage/tokens"),
   getUsageSummary: (window = "30d") => v1<UsageSummary>(`/usage/summary?window=${window}`),
   getAnalyticsDaily: (days = 14) => v1<AnalyticsDaily>(`/analytics/daily?days=${days}`),
+  /** Start the metrics from zero. Sets an epoch — history is filtered, not deleted. */
+  resetUsage: () => v1<{ metrics_epoch: string }>("/usage/reset", { method: "POST" }),
+
+  /** What the agents remember, read live from Hermes. */
+  getMemory: () => v1<MemoryGraph>("/memory"),
+
+  // ── routines (scheduled behaviors, bridged to Hermes cron) ─────────────
+  listRoutines: (agentId: string) =>
+    v1<Routine[] | null>(`/routines?agent_profile_id=${encodeURIComponent(agentId)}`),
+  createRoutine: (input: CreateRoutineInput) =>
+    v1<Routine>("/routines", { method: "POST", body: JSON.stringify(input) }),
+  updateRoutine: (id: string, patch: Partial<CreateRoutineInput>) =>
+    v1<Routine>(`/routines/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteRoutine: (id: string) => v1<void>(`/routines/${id}`, { method: "DELETE" }),
+  /** Every job Hermes will deliver into a chat — including agent-set reminders. */
+  listScheduledJobs: () => v1<ScheduledJob[] | null>("/schedule/jobs"),
 
   // ── model (BYOK) ──────────────────────────────────────────────────────
   getModelSettings: () => v1<ModelSettings>("/settings/model"),
-  updateModelSettings: (input: {
-    model: string;
-    provider: string;
-    api_key?: string;
-    base_url?: string;
-    context_length?: number;
-  }) => v1<ModelSettings>("/settings/model", { method: "PUT", body: JSON.stringify(input) }),
+  /** The gateway reads its model from config at boot, so the backend tells us
+   *  whether this change needs a restart to take effect. */
+  updateModelSettings: (input: ModelSettingsInput) =>
+    v1<{ reload_required: boolean; config: ModelSettings }>("/settings/model", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
 };
 
 /** The realtime stream. Auth rides as a query param — a browser WebSocket
