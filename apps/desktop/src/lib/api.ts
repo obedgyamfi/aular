@@ -220,6 +220,20 @@ export const api = {
   /** Every job Hermes will deliver into a chat — including agent-set reminders. */
   listScheduledJobs: () => v1<ScheduledJob[] | null>("/schedule/jobs"),
 
+  // ── connecting a model (Hermes' own sign-in flows) ────────────────────
+  /** Start the OpenAI Codex device-code login — the flow `hermes model` runs. */
+  codexConnectStart: () =>
+    v1<{ stage: string; verify_url?: string; user_code?: string; error?: string }>(
+      "/settings/model/connect/codex",
+      { method: "POST" },
+    ),
+  codexConnectStatus: () =>
+    v1<{ stage: string; verify_url?: string; user_code?: string; error?: string }>(
+      "/settings/model/connect/codex",
+    ),
+  /** The models this ChatGPT subscription may use. */
+  codexModels: () => v1<string[]>("/settings/model/connect/codex/models"),
+
   /** The org's repository history, for the commit graph. */
   repoLog: (path: string, limit = 120) =>
     v1<import("./types").RepoCommit[]>(

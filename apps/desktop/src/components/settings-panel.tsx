@@ -115,7 +115,7 @@ export function SettingsPanel() {
             <Chats />
           </Show>
           <Show when={section() === "model"}>
-            <Card description="The model your agents run on. You bring the key; it stays on this machine.">
+            <Card description="">
               <ModelSettings />
             </Card>
           </Show>

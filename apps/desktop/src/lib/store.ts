@@ -474,6 +474,27 @@ export const actions = {
     if (state.activeAgentId === id) set("activeAgentId", null);
   },
 
+  /** Re-read the model config (after a sign-in flow changed it). */
+  async refreshModel() {
+    const m = await api.getModelSettings().catch(() => null);
+    set("model", m);
+    return m;
+  },
+
+  /** Save a model choice; partial input merges over what's configured. */
+  async updateModel(input: Partial<Parameters<typeof api.updateModelSettings>[0]>) {
+    const current = state.model;
+    const res = await api.updateModelSettings({
+      provider: input.provider ?? current?.provider ?? "",
+      model: input.model ?? current?.model ?? "",
+      ...(input.base_url !== undefined ? { base_url: input.base_url } : {}),
+      ...(input.api_mode !== undefined ? { api_mode: input.api_mode } : {}),
+      ...(input.api_key ? { api_key: input.api_key } : {}),
+    });
+    set("model", res.config);
+    return res;
+  },
+
   async saveModel(input: Parameters<typeof api.updateModelSettings>[0]) {
     const res = await api.updateModelSettings(input);
     set("model", res.config);
