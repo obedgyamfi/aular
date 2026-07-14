@@ -117,7 +117,7 @@ export function TaskChip(props: {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open()}
         title={t().task}
-        class="flex max-w-[260px] items-center gap-1.5 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 py-1 pl-2 pr-2.5 transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover"
+        class="aular-pop flex max-w-[260px] items-center gap-1.5 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 py-1 pl-2 pr-2.5 transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover"
       >
         <StateDot state={t().state} />
         <span
@@ -167,7 +167,7 @@ function TaskDetail(props: { task: Task; onClose: () => void }) {
   };
 
   return (
-    <div class="absolute left-0 top-full z-40 mt-1.5 w-[340px] rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-02 p-3 shadow-xl">
+    <div class="aular-pop absolute left-0 top-full z-40 mt-1.5 w-[340px] rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-02 p-3 shadow-xl">
       <div class="flex items-center gap-1.5">
         <StateDot state={t().state} />
         <span class="text-[11.5px] font-semibold" style={{ color: meta().color }}>

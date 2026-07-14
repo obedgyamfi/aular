@@ -476,7 +476,7 @@ function ScopeMenu(props: { value: string; onChange: (id: string) => void }) {
       </button>
 
       <Show when={open()}>
-        <div class="absolute left-0 top-full z-40 mt-1 max-h-[240px] w-[200px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+        <div class="aular-pop absolute left-0 top-full z-40 mt-1 max-h-[240px] w-[200px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
           <ScopeItem
             label="Org-wide"
             active={!props.value}

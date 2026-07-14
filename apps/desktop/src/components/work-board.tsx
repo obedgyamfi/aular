@@ -150,7 +150,7 @@ function TaskCard(props: { task: Task }) {
       tabindex="0"
       onClick={openWorker}
       onKeyDown={(e) => e.key === "Enter" && openWorker()}
-      class="cursor-pointer rounded-lg border border-v2-border-border-muted bg-v2-background-bg-base p-2.5 outline-none transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover focus-visible:border-v2-border-border-focus"
+      class="aular-pop cursor-pointer rounded-lg border border-v2-border-border-muted bg-v2-background-bg-base p-2.5 outline-none transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover focus-visible:border-v2-border-border-focus"
       classList={{ "opacity-75": terminal() && t().state !== "completed" }}
     >
       <div class="flex items-center gap-1.5">

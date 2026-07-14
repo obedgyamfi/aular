@@ -96,19 +96,19 @@ export function App() {
               <ChatPane />
             </div>
             <Show when={profileAgent()}>
-              {(a) => <AgentProfilePage agent={a()} />}
+              {(a) => (<div class="aular-rise flex min-h-0 min-w-0 flex-1"><AgentProfilePage agent={a()} /></div>)}
             </Show>
             <Show when={state.register === "work"}>
-              <WorkBoard />
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><WorkBoard /></div>
             </Show>
             <Show when={state.register === "org"}>
-              <OrgPanel />
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><OrgPanel /></div>
             </Show>
             <Show when={state.register === "calendar"}>
-              <CalendarPanel />
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><CalendarPanel /></div>
             </Show>
             <Show when={state.register === "settings"}>
-              <SettingsPanel />
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><SettingsPanel /></div>
             </Show>
 
             <Show when={palette()}>

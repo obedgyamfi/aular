@@ -191,12 +191,12 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(0,0,0,0.45)] pt-[12vh]"
+      class="aular-fade fixed inset-0 z-50 flex items-start justify-center bg-[rgba(0,0,0,0.45)] pt-[12vh]"
       onClick={props.onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        class="flex max-h-[60vh] w-[520px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
+        class="aular-pop flex max-h-[60vh] w-[520px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
       >
         <div class="flex shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-3 py-2.5">
           <span class="text-v2-icon-icon-muted">

@@ -25,14 +25,14 @@ export function Modal(props: {
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-v2-overlay-simple-overlay-scrim p-6"
+      class="aular-fade fixed inset-0 z-50 flex items-center justify-center bg-v2-overlay-simple-overlay-scrim p-6"
       onClick={props.onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        class="relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
+        class="aular-pop relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
         style={{ "max-width": `${props.width ?? 460}px` }}
       >
         <button

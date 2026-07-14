@@ -38,7 +38,7 @@ export function AccountMenu() {
       </button>
 
       <Show when={open()}>
-        <div class="absolute right-0 top-full z-40 mt-1.5 w-[228px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+        <div class="aular-pop absolute right-0 top-full z-40 mt-1.5 w-[228px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
           <div class="flex items-center gap-2.5 border-b border-v2-border-border-muted px-3 py-2">
             <Avatar name={name()} size={28} />
             <div class="min-w-0">

@@ -141,7 +141,7 @@ export function Composer() {
             type="button"
             onClick={() => void actions.send("/stop")}
             title="Interrupt the running work (/stop)"
-            class="absolute bottom-full left-1/2 z-20 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1 text-[11px] font-medium text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+            class="aular-fade absolute bottom-full left-1/2 z-20 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1 text-[11px] font-medium text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
           >
             <span class="size-[8px] rounded-[2px] bg-v2-state-fg-danger" />
             Stop
@@ -184,7 +184,7 @@ export function Composer() {
 
         {/* The slash palette */}
         <Show when={matches().length}>
-          <div class="absolute bottom-full left-0 z-30 mb-2 max-h-[280px] w-full max-w-[460px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+          <div class="aular-pop absolute bottom-full left-0 z-30 mb-2 max-h-[280px] w-full max-w-[460px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
             <For each={matches()}>
               {(c, i) => (
                 <button

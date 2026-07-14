@@ -170,6 +170,52 @@
     --viz-1: #3987e5;
   }
 
+  /* Entrances. Two verbs, used everywhere so the app moves as one thing:
+     `rise` for content that arrives (messages, panels), `pop` for surfaces
+     that open (menus, modals, cards). Both are short and settle fast —
+     motion should feel like the app responding, never performing. */
+  @keyframes aular-rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes aular-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes aular-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  .aular-rise {
+    animation: aular-rise 0.18s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+  }
+  .aular-pop {
+    animation: aular-pop 0.14s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+  }
+  .aular-fade {
+    animation: aular-fade 0.16s ease-out both;
+  }
+
+  /* Pressing feedback: the independent `scale` property composes with any
+     transform a button already carries (translate-centered pills survive). */
+  button:active:not(:disabled) {
+    scale: 0.97;
+    transition: scale 0.06s ease-out;
+  }
+
   .aular-think {
     animation: aular-think 1.25s ease-in-out infinite;
   }

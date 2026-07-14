@@ -32,6 +32,22 @@ export function MessageList() {
   const [atBottom, setAtBottom] = createSignal(true);
   const [newCount, setNewCount] = createSignal(0);
 
+  // Arrival motion: only messages that land while THIS thread is open rise
+  // in — history must never do an entrance dance on every visit.
+  let riseConvo: string | undefined;
+  let riseAfter = Number.MAX_SAFE_INTEGER;
+  createEffect(() => {
+    const c = activeConversationId();
+    if (c !== riseConvo) {
+      riseConvo = c;
+      riseAfter = Date.now();
+    }
+  });
+  const arrives = (m: Message) => {
+    const t = new Date(m.created_at).getTime();
+    return t >= riseAfter - 2000; // small skew allowance vs the server clock
+  };
+
   const byId = createMemo(() => {
     const map = new Map<string, Message>();
     for (const m of messages()) map.set(m.id, m);
@@ -157,6 +173,7 @@ export function MessageList() {
                     classList={{
                       "mt-3": info().first && !info().divider,
                       "mt-1.5": !info().first,
+                      "aular-rise": arrives(m),
                     }}
                   >
                     <Show
@@ -243,7 +260,9 @@ export function MessageList() {
           </For>
 
           <Show when={activeWorking()}>
-            <Thinking agentName={agent()?.name ?? "Agent"} />
+            <div class="aular-rise">
+              <Thinking agentName={agent()?.name ?? "Agent"} />
+            </div>
           </Show>
 
         </div>
@@ -253,7 +272,7 @@ export function MessageList() {
         <button
           type="button"
           onClick={jump}
-          class="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1.5 text-[11px] text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+          class="aular-fade absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1.5 text-[11px] text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
         >
           {newCount()} new message{newCount() === 1 ? "" : "s"} ↓
         </button>

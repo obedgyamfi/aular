@@ -60,7 +60,7 @@ export function Notifications() {
       </button>
 
       <Show when={open()}>
-        <div class="absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+        <div class="aular-pop absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
           {/* Work paused on the human comes first — the org is waiting. */}
           <Show when={blocked().length}>
             <div class="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-state-fg-warning">

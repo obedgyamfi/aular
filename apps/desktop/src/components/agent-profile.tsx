@@ -315,7 +315,7 @@ function ManagerMenu(props: {
         <Icon name="chevron-down" size="small" />
       </button>
       <Show when={open()}>
-        <div class="absolute left-0 top-full z-40 mt-1 max-h-[220px] w-[210px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+        <div class="aular-pop absolute left-0 top-full z-40 mt-1 max-h-[220px] w-[210px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
           <MenuRow
             label="You (the CEO)"
             active={!props.value}
