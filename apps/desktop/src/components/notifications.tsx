@@ -1,15 +1,18 @@
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
-import { actions, state } from "~/lib/store";
+import { age, StateDot } from "~/components/task-state";
+import { actions, inputRequiredTasks, state } from "~/lib/store";
+import type { Task } from "~/lib/types";
 
 /**
  * The bell — what needs you, without hunting the sidebar.
  *
- * A badge with the total unread count; the dropdown lists each agent that's
- * waiting, newest first, and a click lands you in that chat. The icon is
- * hand-drawn in the design system's own voice (16×16, 1px stroke) because the
- * set ships no bell.
+ * Two kinds of "needs you", in order of urgency: tasks paused on your input
+ * (A2A input-required — the org is literally waiting), then agents with
+ * unread messages. The badge counts both. The icon is hand-drawn in the
+ * design system's own voice (16×16, 1px stroke) because the set ships no
+ * bell.
  */
 export function Notifications() {
   const [open, setOpen] = createSignal(false);
@@ -29,7 +32,9 @@ export function Notifications() {
           (state.preview[b.id]?.at ?? "").localeCompare(state.preview[a.id]?.at ?? ""),
       ),
   );
-  const total = () => waiting().reduce((s, a) => s + (state.unread[a.id] ?? 0), 0);
+  const blocked = createMemo(() => inputRequiredTasks());
+  const total = () =>
+    waiting().reduce((s, a) => s + (state.unread[a.id] ?? 0), 0) + blocked().length;
 
   const jump = (agentId: string) => {
     setOpen(false);
@@ -55,7 +60,18 @@ export function Notifications() {
       </button>
 
       <Show when={open()}>
-        <div class="absolute right-0 top-full z-40 mt-1.5 w-[264px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+        <div class="absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
+          {/* Work paused on the human comes first — the org is waiting. */}
+          <Show when={blocked().length}>
+            <div class="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-state-fg-warning">
+              Needs your input
+            </div>
+            <For each={blocked()}>
+              {(t) => <BlockedTaskRow task={t} onDone={() => setOpen(false)} />}
+            </For>
+            <div class="my-1 border-t border-v2-border-border-muted" />
+          </Show>
+
           <div class="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
             Notifications
           </div>
@@ -64,7 +80,9 @@ export function Notifications() {
             when={waiting().length}
             fallback={
               <p class="px-3 pb-2.5 pt-1 text-[11.5px] text-v2-text-text-muted">
-                All caught up — nothing is waiting on you.
+                {blocked().length
+                  ? "No unread messages."
+                  : "All caught up — nothing is waiting on you."}
               </p>
             }
           >
@@ -93,6 +111,61 @@ export function Notifications() {
           </Show>
         </div>
       </Show>
+    </div>
+  );
+}
+
+/** A paused task, answerable without leaving the bell. */
+function BlockedTaskRow(props: { task: Task; onDone: () => void }) {
+  const [answer, setAnswer] = createSignal("");
+  const [busy, setBusy] = createSignal(false);
+  const t = () => props.task;
+
+  const send = async () => {
+    if (!answer().trim() || busy()) return;
+    setBusy(true);
+    try {
+      await actions.answerTask(t().id, answer().trim());
+      props.onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div class="mx-2 mb-1.5 rounded-md border border-v2-state-border-warning bg-v2-state-bg-warning px-2.5 py-2">
+      <div class="flex items-center gap-1.5">
+        <StateDot state="input-required" size={11} />
+        <span class="min-w-0 flex-1 truncate text-[11.5px] font-medium text-v2-text-text-base">
+          {t().to_agent_name}
+        </span>
+        <span class="shrink-0 text-[10px] text-v2-text-text-faint">
+          {age(t().state_updated_at ?? t().created_at)}
+        </span>
+      </div>
+      <p class="pt-1 text-[11.5px] leading-relaxed text-v2-text-text-base">
+        {t().state_message}
+      </p>
+      <p class="truncate pt-0.5 text-[10.5px] text-v2-text-text-faint" title={t().task}>
+        Task: {t().task}
+      </p>
+      <div class="flex items-center gap-1.5 pt-1.5">
+        <input
+          value={answer()}
+          onInput={(e) => setAnswer(e.currentTarget.value)}
+          onKeyDown={(e) => e.key === "Enter" && void send()}
+          placeholder="Answer and resume…"
+          class="min-w-0 flex-1 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 px-2 py-1 text-[11.5px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint focus:border-v2-border-border-focus"
+        />
+        <button
+          type="button"
+          disabled={!answer().trim() || busy()}
+          onClick={() => void send()}
+          class="shrink-0 rounded-md bg-v2-background-bg-accent px-2 py-1 text-[11px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
+        >
+          Send
+        </button>
+      </div>
     </div>
   );
 }

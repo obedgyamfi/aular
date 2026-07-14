@@ -141,6 +141,7 @@ export function MessageList() {
                 m.reply_to_message_id ? byId().get(m.reply_to_message_id) : undefined;
 
               return (
+                <Show when={!isEmptyExhaust(m, !!state.streaming[m.id])}>
                 <div class="flex flex-col">
                   <Show when={info().divider}>
                     <div class="flex justify-center py-3">
@@ -236,6 +237,7 @@ export function MessageList() {
                     </Show>
                   </div>
                 </div>
+                </Show>
               );
             }}
           </For>
@@ -268,6 +270,18 @@ function splitChunks(content: string): string[] {
     .map((p) => p.trim())
     .filter(Boolean);
   return parts.length ? parts : [content];
+}
+
+/**
+ * Block-only replies (a dispatch, a status report) have their visible text
+ * stripped server-side — an empty bubble is protocol exhaust, not a message.
+ * Streaming stays visible: its emptiness is a moment, not a nature.
+ */
+export function isEmptyExhaust(m: Message, streaming: boolean): boolean {
+  if (streaming || m.sender_type === "system") return false;
+  if (m.content.trim() !== "") return false;
+  const media = m.structured_payload?.media;
+  return !Array.isArray(media) || media.length === 0;
 }
 
 const side = (m: Message) => (m.sender_type === "user" ? "user" : "agent");

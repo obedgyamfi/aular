@@ -9,8 +9,10 @@ import type {
   Message,
   ModelSettings,
   RealtimeEvent,
+  Task,
   ToolCall,
 } from "./types";
+import { TERMINAL_TASK_STATES } from "./types";
 
 /**
  * The app's state.
@@ -72,6 +74,9 @@ interface State {
   messages: Record<string, Message[]>;
   toolCalls: Record<string, ToolCall[]>;
 
+  /** The org's work: task id → task, A2A-stated. Fed by boot + task.updated. */
+  tasks: Record<string, Task>;
+
   /** per-agent chat-list state */
   unread: Record<string, number>;
   preview: Record<string, Preview>;
@@ -105,6 +110,7 @@ const [state, set] = createStore<State>({
   agentOf: {},
   messages: {},
   toolCalls: {},
+  tasks: {},
   unread: {},
   preview: {},
   working: {},
@@ -117,6 +123,11 @@ const [state, set] = createStore<State>({
 });
 
 export { state };
+
+// Dev-only: the store, inspectable from the console / the UI test harness.
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__aular_state = state;
+}
 
 let stopRealtime: (() => void) | null = null;
 
@@ -262,11 +273,12 @@ export const actions = {
    * one round-trip instead of one per row.
    */
   async load() {
-    const [health, agents, convos, model] = await Promise.all([
+    const [health, agents, convos, model, tasks] = await Promise.all([
       api.health().catch(() => null),
       api.listAgents(),
       api.listConversations().then((c) => c ?? []),
       api.getModelSettings().catch(() => null),
+      api.listTasks().then((t) => t ?? []).catch(() => []),
     ]);
 
     set(
@@ -275,6 +287,7 @@ export const actions = {
         s.agents = agents;
         s.model = model;
         s.error = null;
+        s.tasks = Object.fromEntries(tasks.map((t) => [t.id, t]));
         // The list is newest-activity first, and an agent can have several
         // threads. First one wins — overwriting bound every agent to its
         // OLDEST conversation, with a stale preview and unread count to match.
@@ -390,6 +403,19 @@ export const actions = {
     } catch (e) {
       set("error", (e as Error).message);
     }
+  },
+
+  /** Answer an input-required task; the worker resumes with it. */
+  async answerTask(id: string, content: string) {
+    const t = await api.answerTask(id, content);
+    set("tasks", id, t);
+    return t;
+  },
+
+  async cancelTask(id: string) {
+    const t = await api.cancelTask(id);
+    set("tasks", id, t);
+    return t;
   },
 
   setReplyTo(m: Message | null) {
@@ -527,6 +553,13 @@ function handleEvent(e: RealtimeEvent) {
       return;
     }
 
+    case "task.updated": {
+      const t = e.data as Task;
+      if (!t?.id) return;
+      set("tasks", t.id, t);
+      return;
+    }
+
     case "agent.created": {
       const agent = e.data as Agent;
       set("agents", (list) =>
@@ -572,3 +605,33 @@ export const canGoForward = (): boolean => state.historyAt < state.history.lengt
 
 export const totalUnread = (): number =>
   Object.values(state.unread).reduce((a, b) => a + b, 0);
+
+// ── tasks ────────────────────────────────────────────────────────────────────
+
+const taskTouchedAt = (t: Task) => t.state_updated_at ?? t.created_at;
+
+/** Tasks whose lifecycle is still running, newest activity first. */
+export const liveTasks = (): Task[] =>
+  Object.values(state.tasks)
+    .filter((t) => !TERMINAL_TASK_STATES.has(t.state))
+    .sort((a, b) => taskTouchedAt(b).localeCompare(taskTouchedAt(a)));
+
+/** The human's inbox: everything paused on a person. */
+export const inputRequiredTasks = (): Task[] =>
+  liveTasks().filter((t) => t.state === "input-required");
+
+/** A conversation's live tasks — what its agent owes, and what it farmed out.
+ *  A self-dispatch (same thread both sides) counts once, as assigned. */
+export const tasksOfConversation = (
+  conversationId: string,
+): { assigned: Task[]; delegated: Task[] } => {
+  const live = liveTasks();
+  return {
+    assigned: live.filter((t) => t.to_conversation_id === conversationId),
+    delegated: live.filter(
+      (t) =>
+        t.from_conversation_id === conversationId &&
+        t.to_conversation_id !== conversationId,
+    ),
+  };
+};

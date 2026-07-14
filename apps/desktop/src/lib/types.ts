@@ -140,9 +140,46 @@ export interface RealtimeEvent {
     | "agent.updated"
     | "agent.activity"
     | "tool_call.started"
-    | "tool_call.updated";
+    | "tool_call.updated"
+    | "task.updated";
   conversation_id?: string;
   data?: any;
+}
+
+// ── tasks (the A2A lifecycle over dispatches) ────────────────────────────────
+
+/** TaskState values exactly as the Agent2Agent protocol specifies them. */
+export type TaskState =
+  | "submitted"
+  | "working"
+  | "input-required"
+  | "completed"
+  | "canceled"
+  | "failed"
+  | "rejected";
+
+export const TERMINAL_TASK_STATES: ReadonlySet<TaskState> = new Set([
+  "completed",
+  "canceled",
+  "failed",
+  "rejected",
+]);
+
+/** GET /api/v1/tasks row; also the task.updated WS payload. */
+export interface Task {
+  id: string;
+  task: string;
+  state: TaskState;
+  state_message?: string;
+  state_updated_at?: string;
+  from_agent_name: string;
+  to_agent_name: string;
+  to_agent_profile_id?: string;
+  from_conversation_id: string;
+  to_conversation_id: string;
+  depth: number;
+  created_at: string;
+  answered_at?: string;
 }
 
 // ── the dashboard ───────────────────────────────────────────────────────────

@@ -8,8 +8,16 @@ import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
 import { Onboarding } from "~/components/onboarding";
 import { RoutinesModal } from "~/components/routines-modal";
+import { TaskStrip } from "~/components/task-state";
 import { WorkFeed } from "~/components/work-panel";
-import { actions, activeAgent, activeWorking, state } from "~/lib/store";
+import {
+  actions,
+  activeAgent,
+  activeConversationId,
+  activeWorking,
+  state,
+  tasksOfConversation,
+} from "~/lib/store";
 
 /**
  * The chat register.
@@ -117,6 +125,14 @@ export function ChatPane() {
                 />
               </button>
             </header>
+
+            {/* This conversation's live work, as chips — the spine surfacing. */}
+            {(() => {
+              const tasks = () => tasksOfConversation(activeConversationId() ?? "");
+              return (
+                <TaskStrip assigned={tasks().assigned} delegated={tasks().delegated} />
+              );
+            })()}
 
             <Show when={state.chatView === "chat"} fallback={<WorkFeed />}>
               <MessageList />

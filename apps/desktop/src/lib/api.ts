@@ -15,6 +15,7 @@ import type {
   OrgDocument,
   Routine,
   ScheduledJob,
+  Task,
   TokenUsage,
   ToolCall,
   ToolDefinition,
@@ -197,6 +198,16 @@ export const api = {
 
   /** What the agents remember, read live from Hermes. */
   getMemory: () => v1<MemoryGraph>("/memory"),
+
+  // ── tasks (A2A lifecycle over dispatches) ─────────────────────────────
+  listTasks: (states?: string[], limit = 200) =>
+    v1<Task[] | null>(
+      `/tasks?limit=${limit}${states?.length ? `&state=${states.join(",")}` : ""}`,
+    ),
+  /** Answer an input-required task; the worker resumes with it. */
+  answerTask: (id: string, content: string) =>
+    v1<Task>(`/tasks/${id}/input`, { method: "POST", body: JSON.stringify({ content }) }),
+  cancelTask: (id: string) => v1<Task>(`/tasks/${id}/cancel`, { method: "POST" }),
 
   // ── routines (scheduled behaviors, bridged to Hermes cron) ─────────────
   listRoutines: (agentId: string) =>
