@@ -21,7 +21,7 @@ import { TERMINAL_TASK_STATES } from "./types";
  * and REST both write here, and keeping per-agent view state (unread, preview,
  * typing) separate from the message log is what stops them fighting.
  */
-export type Register = "chat" | "org" | "calendar" | "settings";
+export type Register = "chat" | "work" | "org" | "calendar" | "settings";
 
 /**
  * How the chat register draws the conversation you're in.

@@ -11,6 +11,7 @@ import { Rail } from "~/components/rail";
 import { SettingsPanel } from "~/components/settings-panel";
 import { Sidebar } from "~/components/sidebar";
 import { TitleBar } from "~/components/titlebar";
+import { WorkBoard } from "~/components/work-board";
 import { api } from "~/lib/api";
 import { startNotifications } from "~/lib/notify";
 import { actions, state } from "~/lib/store";
@@ -86,6 +87,9 @@ export function App() {
             >
               <ChatPane />
             </div>
+            <Show when={state.register === "work"}>
+              <WorkBoard />
+            </Show>
             <Show when={state.register === "org"}>
               <OrgPanel />
             </Show>

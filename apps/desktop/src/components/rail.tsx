@@ -7,11 +7,12 @@ import { actions, state, type Register } from "~/lib/store";
 const REGISTERS: {
   id: Register;
   label: string;
-  icon: "speech-bubble" | "subagent" | "task";
+  icon: "speech-bubble" | "status" | "subagent" | "task";
 }[] = [
-  // No "Work" here: the work view is a lens on a conversation, and it lives in
-  // the chat header next to the thread it belongs to.
+  // The per-conversation terminal lens still lives in the chat header; this
+  // Work register is mission control — every task in the org, as a board.
   { id: "chat", label: "Chat", icon: "speech-bubble" },
+  { id: "work", label: "Work — mission control", icon: "status" },
   { id: "org", label: "Organization", icon: "subagent" },
   { id: "calendar", label: "Calendar", icon: "task" },
 ];
