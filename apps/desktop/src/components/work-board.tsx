@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
+import { RepoGraph } from "~/components/repo-graph";
 import { age, StateDot, STATE_META } from "~/components/task-state";
 import { actions, state } from "~/lib/store";
 import type { Task, TaskState } from "~/lib/types";
@@ -31,6 +32,7 @@ const LANES: { states: TaskState[]; label: string; icon: TaskState }[] = [
 const FINISHED_SHOWN = 25;
 
 export function WorkBoard() {
+  const [view, setView] = createSignal<"board" | "commits">("board");
   const byLane = createMemo(() => {
     const all = Object.values(state.tasks).sort((a, b) =>
       (b.state_updated_at ?? b.created_at).localeCompare(a.state_updated_at ?? a.created_at),
@@ -51,12 +53,22 @@ export function WorkBoard() {
     <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
       <header class="flex h-11 shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-4">
         <h1 class="text-[13px] font-medium text-v2-text-text-base">Work</h1>
+        <div class="ml-1 flex items-center gap-px overflow-hidden rounded-md border border-v2-border-border-muted">
+          <ViewTab active={view() === "board"} onClick={() => setView("board")}>Board</ViewTab>
+          <ViewTab active={view() === "commits"} onClick={() => setView("commits")}>Commits</ViewTab>
+        </div>
         <p class="text-[11.5px] text-v2-text-text-muted">
-          every task in the org, live — click a card to open the conversation
-          behind it
+          {view() === "board"
+            ? "every task in the org, live — click a card to open the conversation behind it"
+            : "the repository's history, drawn — who committed what, on which branch"}
         </p>
       </header>
 
+      <Show when={view() === "commits"}>
+        <RepoGraph />
+      </Show>
+
+      <Show when={view() === "board"}>
       <Show
         when={anyWork()}
         fallback={
@@ -75,7 +87,9 @@ export function WorkBoard() {
           </div>
         }
       >
-        <div class="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
+        <div class="min-h-0 flex-1 overflow-x-auto p-4">
+          {/* Centered while it fits; scrolls once the org outgrows the window. */}
+          <div class="mx-auto flex h-full w-fit min-w-min gap-3">
           <For each={byLane()}>
             {(lane) => (
               <section class="flex h-full w-[290px] shrink-0 flex-col rounded-lg border border-v2-border-border-muted bg-v2-background-bg-layer-01">
@@ -103,9 +117,27 @@ export function WorkBoard() {
               </section>
             )}
           </For>
+          </div>
         </div>
       </Show>
+      </Show>
     </div>
+  );
+}
+
+function ViewTab(props: { active: boolean; onClick: () => void; children: any }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      class="px-2.5 py-1 text-[11px] transition-colors"
+      classList={{
+        "bg-v2-overlay-simple-overlay-pressed font-medium text-v2-text-text-base": props.active,
+        "text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base": !props.active,
+      }}
+    >
+      {props.children}
+    </button>
   );
 }
 

@@ -1,5 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 
+import { openExternal } from "~/lib/external";
 import type { MediaDescriptor, Message } from "~/lib/types";
 
 /**
@@ -83,13 +84,13 @@ export function MediaAttachments(props: { message: Message }) {
                         {formatBytes(m.size) || "Audio"}
                       </div>
                     </div>
-                    <a
-                      href={absolute(m.url)}
-                      download={label()}
+                    <button
+                      type="button"
+                      onClick={() => void openExternal(absolute(m.url))}
                       class="shrink-0 rounded-full bg-v2-background-bg-layer-02 px-3 py-1 text-[11.5px] text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
                     >
                       Download
-                    </a>
+                    </button>
                   </div>
                   <audio src={absolute(m.url)} controls preload="metadata" class="w-full" />
                 </div>
@@ -123,23 +124,28 @@ function Overlay(props: { media: MediaDescriptor; label: string }) {
     "rounded-full bg-[rgba(0,0,0,0.55)] px-2 py-1 text-[11px] font-medium text-[#ffffff] backdrop-blur transition-colors hover:bg-[rgba(0,0,0,0.78)]";
   return (
     <div class="absolute right-2 top-2 flex gap-1 opacity-95">
-      <a
-        href={absolute(props.media.url)}
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void openExternal(absolute(props.media.url));
+        }}
         class={pill}
-        aria-label={`Open ${props.label}`}
+        aria-label={`Open ${props.label} with the system viewer`}
       >
         Open
-      </a>
-      <a
-        href={absolute(props.media.url)}
-        download={props.label}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void openExternal(absolute(props.media.url));
+        }}
         class={pill}
         aria-label={`Download ${props.label}`}
       >
         ↓
-      </a>
+      </button>
     </div>
   );
 }
@@ -155,14 +161,13 @@ function DocumentCard(props: { media: MediaDescriptor; label: string }) {
         {extensionOf(props.label).slice(0, 4) || "FILE"}
       </div>
       <div class="min-w-0 flex-1 pr-16">
-        <a
-          href={absolute(props.media.url)}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="block truncate text-[12.5px] font-medium text-v2-text-text-base hover:underline"
+        <button
+          type="button"
+          onClick={() => void openExternal(absolute(props.media.url))}
+          class="block w-full truncate text-left text-[12.5px] font-medium text-v2-text-text-base hover:underline"
         >
           {props.label}
-        </a>
+        </button>
         <Show when={meta()}>
           <div class="mt-0.5 text-[11px] text-v2-text-text-faint">{meta()}</div>
         </Show>

@@ -32,21 +32,10 @@ export function MessageList() {
   const [atBottom, setAtBottom] = createSignal(true);
   const [newCount, setNewCount] = createSignal(0);
 
-  // Arrival motion: only messages that land while THIS thread is open rise
-  // in — history must never do an entrance dance on every visit.
-  let riseConvo: string | undefined;
-  let riseAfter = Number.MAX_SAFE_INTEGER;
-  createEffect(() => {
-    const c = activeConversationId();
-    if (c !== riseConvo) {
-      riseConvo = c;
-      riseAfter = Date.now();
-    }
-  });
-  const arrives = (m: Message) => {
-    const t = new Date(m.created_at).getTime();
-    return t >= riseAfter - 2000; // small skew allowance vs the server clock
-  };
+  // No per-row entrance animation: rows render against a moving gate on
+  // conversation switch (effects run after render), so recent history did an
+  // entrance dance that read as flicker. Streaming lists are hot paths —
+  // arrival is already announced by the thinking indicator and autoscroll.
 
   const byId = createMemo(() => {
     const map = new Map<string, Message>();
@@ -173,7 +162,6 @@ export function MessageList() {
                     classList={{
                       "mt-3": info().first && !info().divider,
                       "mt-1.5": !info().first,
-                      "aular-rise": arrives(m),
                     }}
                   >
                     <Show

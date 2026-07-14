@@ -220,6 +220,12 @@ export const api = {
   /** Every job Hermes will deliver into a chat — including agent-set reminders. */
   listScheduledJobs: () => v1<ScheduledJob[] | null>("/schedule/jobs"),
 
+  /** The org's repository history, for the commit graph. */
+  repoLog: (path: string, limit = 120) =>
+    v1<import("./types").RepoCommit[]>(
+      `/repo/log?path=${encodeURIComponent(path)}&limit=${limit}`,
+    ),
+
   // ── model (BYOK) ──────────────────────────────────────────────────────
   getModelSettings: () => v1<ModelSettings>("/settings/model"),
   /** The gateway reads its model from config at boot, so the backend tells us

@@ -160,14 +160,31 @@
   :root {
     --viz-1: #2a78d6;
     --viz-2: #d95926;
+    /* Commit-graph lanes: the validated categorical order, stepped per scheme. */
+    --graph-1: #2a78d6;
+    --graph-2: #d95926;
+    --graph-3: #1baf7a;
+    --graph-4: #4a3aa7;
+    --graph-5: #e87ba4;
+    --graph-6: #eda100;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-scheme="light"]) {
       --viz-1: #3987e5;
+      --graph-1: #3987e5;
+      --graph-3: #199e70;
+      --graph-4: #9085e9;
+      --graph-5: #d55181;
+      --graph-6: #c98500;
     }
   }
   :root[data-scheme="dark"] {
     --viz-1: #3987e5;
+    --graph-1: #3987e5;
+    --graph-3: #199e70;
+    --graph-4: #9085e9;
+    --graph-5: #d55181;
+    --graph-6: #c98500;
   }
 
   /* Entrances. Two verbs, used everywhere so the app moves as one thing:
@@ -199,21 +216,30 @@
       opacity: 0;
     }
   }
+  /* Standard decelerate (Material's 0,0,.2,1): entrances start fast and
+     settle — never ease-in, never past 300ms, transform+opacity only. */
   .aular-rise {
-    animation: aular-rise 0.18s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+    animation: aular-rise 0.2s cubic-bezier(0, 0, 0.2, 1) both;
   }
   .aular-pop {
-    animation: aular-pop 0.14s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+    animation: aular-pop 0.15s cubic-bezier(0, 0, 0.2, 1) both;
   }
   .aular-fade {
-    animation: aular-fade 0.16s ease-out both;
+    animation: aular-fade 0.15s cubic-bezier(0, 0, 0.2, 1) both;
   }
 
   /* Pressing feedback: the independent `scale` property composes with any
-     transform a button already carries (translate-centered pills survive). */
+     transform a button already carries (translate-centered pills survive).
+     The transition lives on the base state so the RELEASE eases too —
+     declaring it only under :active made letting go snap, which read as
+     flicker. */
+  button {
+    transition-property: scale;
+    transition-duration: 0.1s;
+    transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
   button:active:not(:disabled) {
     scale: 0.97;
-    transition: scale 0.06s ease-out;
   }
 
   .aular-think {

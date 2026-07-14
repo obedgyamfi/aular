@@ -299,3 +299,13 @@ export interface AnalyticsDaily {
   tokens: DailyTokens[] | null;
   messages: DailyMessages[] | null;
 }
+
+/** GET /api/v1/repo/log — one commit for the graph. */
+export interface RepoCommit {
+  hash: string;
+  parents?: string[];
+  author: string;
+  date: string;
+  refs?: string[];
+  subject: string;
+}
