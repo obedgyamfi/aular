@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { Markdown } from "~/components/markdown";
-import { activeConversationId, activeWorking, state } from "~/lib/store";
+import { actions, activeConversationId, activeWorking, state } from "~/lib/store";
 import type { Message, ToolCall } from "~/lib/types";
 
 /**
@@ -164,11 +164,12 @@ function ToolLine(props: { tool: ToolCall }) {
   const snippet = () => props.tool.response_payload?.snippet;
 
   return (
-    <div class="py-0.5">
+    <div class="group/tool py-0.5">
+      <div class="flex items-center gap-1">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left text-[12px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+        class="flex w-full min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[12px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
       >
         <span
           class="shrink-0 transition-transform"
@@ -191,6 +192,19 @@ function ToolLine(props: { tool: ToolCall }) {
           </span>
         </Show>
       </button>
+      <button
+        type="button"
+        title={state.pinnedToolId === props.tool.id ? "Unpin output" : "Pin output beside the chat"}
+        onClick={() => actions.pinTool(state.pinnedToolId === props.tool.id ? null : props.tool.id)}
+        class="shrink-0 rounded px-1.5 py-1 text-[10.5px] font-medium opacity-0 transition-opacity focus-visible:opacity-100 group-hover/tool:opacity-100"
+        classList={{
+          "text-v2-icon-icon-accent opacity-100": state.pinnedToolId === props.tool.id,
+          "text-v2-text-text-faint hover:text-v2-text-text-base": state.pinnedToolId !== props.tool.id,
+        }}
+      >
+        {state.pinnedToolId === props.tool.id ? "Pinned" : "Pin"}
+      </button>
+      </div>
 
       <Show when={open()}>
         <div class="ml-5 flex flex-col gap-2 border-l border-v2-border-border-muted py-2 pl-3">

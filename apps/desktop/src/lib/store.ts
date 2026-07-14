@@ -79,6 +79,9 @@ interface State {
   /** The org's work: task id → task, A2A-stated. Fed by boot + task.updated. */
   tasks: Record<string, Task>;
 
+  /** A tool call held open beside the chat (the pinned-output panel). */
+  pinnedToolId: string | null;
+
   /** per-agent chat-list state */
   unread: Record<string, number>;
   preview: Record<string, Preview>;
@@ -114,6 +117,7 @@ const [state, set] = createStore<State>({
   messages: {},
   toolCalls: {},
   tasks: {},
+  pinnedToolId: null,
   unread: {},
   preview: {},
   working: {},
@@ -433,6 +437,10 @@ export const actions = {
 
   setReplyTo(m: Message | null) {
     set("replyTo", m);
+  },
+
+  pinTool(id: string | null) {
+    set("pinnedToolId", id);
   },
 
   async attach(file: File) {

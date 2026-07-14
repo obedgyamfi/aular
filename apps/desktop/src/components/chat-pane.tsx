@@ -6,6 +6,7 @@ import { Composer } from "~/components/composer";
 import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
 import { Onboarding } from "~/components/onboarding";
+import { OutputPanel } from "~/components/output-panel";
 import { RoutinesModal } from "~/components/routines-modal";
 import { TaskStrip } from "~/components/task-state";
 import { WorkFeed } from "~/components/work-panel";
@@ -132,9 +133,14 @@ export function ChatPane() {
               );
             })()}
 
-            <Show when={state.chatView === "chat"} fallback={<WorkFeed />}>
-              <MessageList />
-            </Show>
+            <div class="flex min-h-0 min-w-0 flex-1">
+              <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+                <Show when={state.chatView === "chat"} fallback={<WorkFeed />}>
+                  <MessageList />
+                </Show>
+              </div>
+              <OutputPanel />
+            </div>
           </>
         )}
       </Show>
