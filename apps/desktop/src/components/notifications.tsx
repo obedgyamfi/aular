@@ -1,8 +1,10 @@
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { Bell as BellIcon } from "lucide-solid";
 
 import { Avatar } from "~/components/avatar";
+import { BriefCard } from "~/components/brief-card";
 import { age, StateDot } from "~/components/task-state";
-import { actions, inputRequiredTasks, state } from "~/lib/store";
+import { actions, inputRequiredTasks, pendingBriefs, state } from "~/lib/store";
 import type { Task } from "~/lib/types";
 
 /**
@@ -33,8 +35,11 @@ export function Notifications() {
       ),
   );
   const blocked = createMemo(() => inputRequiredTasks());
+  const decisions = createMemo(() => pendingBriefs());
   const total = () =>
-    waiting().reduce((s, a) => s + (state.unread[a.id] ?? 0), 0) + blocked().length;
+    waiting().reduce((s, a) => s + (state.unread[a.id] ?? 0), 0) +
+    blocked().length +
+    decisions().length;
 
   const jump = (agentId: string) => {
     setOpen(false);
@@ -51,7 +56,7 @@ export function Notifications() {
         aria-label={total() ? `Notifications — ${total()} unread` : "Notifications"}
         class="relative flex size-7 items-center justify-center rounded text-v2-icon-icon-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
       >
-        <Bell />
+        <BellIcon size={17} stroke-width={1.6} />
         <Show when={total() > 0}>
           <span class="absolute right-0 top-0 flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-v2-background-bg-accent px-[3px] text-[9px] font-semibold leading-none text-v2-text-text-inverse">
             {total() > 99 ? "99+" : total()}
@@ -61,7 +66,20 @@ export function Notifications() {
 
       <Show when={open()}>
         <div class="aular-pop absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
-          {/* Work paused on the human comes first — the org is waiting. */}
+          {/* Decisions the org is waiting on — answerable with one click. */}
+          <Show when={decisions().length}>
+            <div class="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-state-fg-warning">
+              Decisions
+            </div>
+            <div class="flex flex-col gap-1.5 px-2 pb-1.5">
+              <For each={decisions()}>
+                {(b) => <BriefCard brief={b} compact />}
+              </For>
+            </div>
+            <div class="my-1 border-t border-v2-border-border-muted" />
+          </Show>
+
+          {/* Work paused on the human comes next — the org is waiting. */}
           <Show when={blocked().length}>
             <div class="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-state-fg-warning">
               Needs your input
@@ -80,7 +98,7 @@ export function Notifications() {
             when={waiting().length}
             fallback={
               <p class="px-3 pb-2.5 pt-1 text-[11.5px] text-v2-text-text-muted">
-                {blocked().length
+                {blocked().length || decisions().length
                   ? "No unread messages."
                   : "All caught up — nothing is waiting on you."}
               </p>
@@ -167,22 +185,5 @@ function BlockedTaskRow(props: { task: Task; onDone: () => void }) {
         </button>
       </div>
     </div>
-  );
-}
-
-/** A bell in the icon set's voice: 16×16, 1px currentColor stroke. */
-function Bell() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 2C5.9 2 4.3 3.7 4.3 5.8V8.7L3 11.2H13L11.7 8.7V5.8C11.7 3.7 10.1 2 8 2Z"
-        stroke="currentColor"
-      />
-      <path
-        d="M6.3 13.2C6.6 14 7.2 14.5 8 14.5C8.8 14.5 9.4 14 9.7 13.2"
-        stroke="currentColor"
-        stroke-linecap="square"
-      />
-    </svg>
   );
 }

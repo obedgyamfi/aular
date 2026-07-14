@@ -13,6 +13,7 @@
   "dependencies": {
     "@dicebear/collection": "^9.4.2",
     "@dicebear/core": "^9.4.3",
+    "@formkit/auto-animate": "^0.10.0",
     "@kobalte/core": "^0.13.7",
     "@opencode-ai/ui": "^1.17.18",
     "@solid-primitives/storage": "^4.3.1",
@@ -21,6 +22,7 @@
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-shell": "^2.0.1",
     "dompurify": "^3.4.12",
+    "lucide-solid": "^1.24.0",
     "marked": "^18.0.6",
     "solid-js": "^1.9.3"
   },

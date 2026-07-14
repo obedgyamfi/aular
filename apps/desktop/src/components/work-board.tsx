@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
+import autoAnimate from "@formkit/auto-animate";
 
 import { Avatar } from "~/components/avatar";
 import { RepoGraph } from "~/components/repo-graph";
@@ -102,7 +103,10 @@ export function WorkBoard() {
                     {lane.count}
                   </span>
                 </header>
-                <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+                <div
+                  ref={(el) => autoAnimate(el, { duration: 180, easing: "cubic-bezier(0,0,.2,1)" })}
+                  class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2"
+                >
                   <For
                     each={lane.tasks}
                     fallback={
@@ -182,7 +186,7 @@ function TaskCard(props: { task: Task }) {
       tabindex="0"
       onClick={openWorker}
       onKeyDown={(e) => e.key === "Enter" && openWorker()}
-      class="aular-pop cursor-pointer rounded-lg border border-v2-border-border-muted bg-v2-background-bg-base p-2.5 outline-none transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover focus-visible:border-v2-border-border-focus"
+      class="cursor-pointer rounded-lg border border-v2-border-border-muted bg-v2-background-bg-base p-2.5 outline-none transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover focus-visible:border-v2-border-border-focus"
       classList={{ "opacity-75": terminal() && t().state !== "completed" }}
     >
       <div class="flex items-center gap-1.5">

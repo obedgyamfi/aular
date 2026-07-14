@@ -141,7 +141,9 @@ export interface RealtimeEvent {
     | "agent.activity"
     | "tool_call.started"
     | "tool_call.updated"
-    | "task.updated";
+    | "task.updated"
+    | "brief.created"
+    | "brief.updated";
   conversation_id?: string;
   data?: any;
 }
@@ -308,4 +310,20 @@ export interface RepoCommit {
   date: string;
   refs?: string[];
   subject: string;
+}
+
+/** A typed agent report: a decision it needs, a result, or an insight. */
+export interface Brief {
+  id: string;
+  conversation_id: string;
+  agent_profile_id?: string;
+  agent_name: string;
+  dispatch_id?: string;
+  kind: "decision" | "result" | "insight";
+  title: string;
+  body: string;
+  options: string[];
+  answer?: string;
+  answered_at?: string;
+  created_at: string;
 }

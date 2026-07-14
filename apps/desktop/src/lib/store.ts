@@ -4,6 +4,7 @@ import { api, openRealtime } from "./api";
 import type {
   Agent,
   AuthUser,
+  Brief,
   Health,
   MediaDescriptor,
   Message,
@@ -82,6 +83,9 @@ interface State {
   /** A tool call held open beside the chat (the pinned-output panel). */
   pinnedToolId: string | null;
 
+  /** Typed agent reports: brief id → brief. */
+  briefs: Record<string, Brief>;
+
   /** per-agent chat-list state */
   unread: Record<string, number>;
   preview: Record<string, Preview>;
@@ -118,6 +122,7 @@ const [state, set] = createStore<State>({
   toolCalls: {},
   tasks: {},
   pinnedToolId: null,
+  briefs: {},
   unread: {},
   preview: {},
   working: {},
@@ -290,12 +295,13 @@ export const actions = {
    * one round-trip instead of one per row.
    */
   async load() {
-    const [health, agents, convos, model, tasks] = await Promise.all([
+    const [health, agents, convos, model, tasks, briefs] = await Promise.all([
       api.health().catch(() => null),
       api.listAgents(),
       api.listConversations().then((c) => c ?? []),
       api.getModelSettings().catch(() => null),
       api.listTasks().then((t) => t ?? []).catch(() => []),
+      api.listBriefs().then((b) => b ?? []).catch(() => []),
     ]);
 
     set(
@@ -305,6 +311,7 @@ export const actions = {
         s.model = model;
         s.error = null;
         s.tasks = Object.fromEntries(tasks.map((t) => [t.id, t]));
+        s.briefs = Object.fromEntries(briefs.map((b) => [b.id, b]));
         // The list is newest-activity first, and an agent can have several
         // threads. First one wins — overwriting bound every agent to its
         // OLDEST conversation, with a stale preview and unread count to match.
@@ -427,6 +434,13 @@ export const actions = {
     const t = await api.answerTask(id, content);
     set("tasks", id, t);
     return t;
+  },
+
+  /** Answer a decision brief — the agent resumes on that basis. */
+  async answerBrief(id: string, answer: string) {
+    const b = await api.answerBrief(id, answer);
+    set("briefs", id, b);
+    return b;
   },
 
   async cancelTask(id: string) {
@@ -602,6 +616,14 @@ function handleEvent(e: RealtimeEvent) {
       return;
     }
 
+    case "brief.created":
+    case "brief.updated": {
+      const b = e.data as Brief;
+      if (!b?.id) return;
+      set("briefs", b.id, b);
+      return;
+    }
+
     case "agent.created": {
       const agent = e.data as Agent;
       set("agents", (list) =>
@@ -661,6 +683,18 @@ export const liveTasks = (): Task[] =>
 /** The human's inbox: everything paused on a person. */
 export const inputRequiredTasks = (): Task[] =>
   liveTasks().filter((t) => t.state === "input-required");
+
+/** Decisions an agent is waiting on you to make, newest first. */
+export const pendingBriefs = (): Brief[] =>
+  Object.values(state.briefs)
+    .filter((b) => b.kind === "decision" && !b.answered_at)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+/** A conversation's briefs, oldest first (they render inline in the thread). */
+export const briefsOfConversation = (conversationId: string): Brief[] =>
+  Object.values(state.briefs)
+    .filter((b) => b.conversation_id === conversationId)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
 /** A conversation's live tasks — what its agent owes, and what it farmed out.
  *  A self-dispatch (same thread both sides) counts once, as assigned. */

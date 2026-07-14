@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
+import autoAnimate from "@formkit/auto-animate";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { AgentListItem } from "~/components/agent-list-item";
@@ -67,7 +68,10 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div class="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2">
+      <div
+        ref={(el) => autoAnimate(el, { duration: 180, easing: "cubic-bezier(0,0,.2,1)" })}
+        class="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2"
+      >
         <For each={system()}>
           {(a) => (
             <AgentListItem

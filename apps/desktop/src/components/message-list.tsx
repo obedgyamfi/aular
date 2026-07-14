@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
+import { BriefCard } from "~/components/brief-card";
 import { MessageBubble } from "~/components/message-bubble";
 import { Thinking } from "~/components/thinking";
 import {
@@ -8,6 +9,7 @@ import {
   activeConversationId,
   activeMessages,
   activeWorking,
+  briefsOfConversation,
   state,
 } from "~/lib/store";
 import type { Message } from "~/lib/types";
@@ -245,6 +247,16 @@ export function MessageList() {
                 </Show>
               );
             }}
+          </For>
+
+          {/* Briefs: the org's typed reports, at the foot of the thread where
+              the newest work is. A decision keeps its buttons until answered. */}
+          <For each={briefsOfConversation(activeConversationId() ?? "")}>
+            {(b) => (
+              <div class="pt-3">
+                <BriefCard brief={b} />
+              </div>
+            )}
           </For>
 
           <Show when={activeWorking()}>

@@ -242,6 +242,15 @@ export const api = {
   /** The models this ChatGPT subscription may use. */
   codexModels: () => v1<string[]>("/settings/model/connect/codex/models"),
 
+  // ── briefs (typed agent reports) ───────────────────────────────────────
+  listBriefs: (pendingOnly = false) =>
+    v1<import("./types").Brief[] | null>(`/briefs${pendingOnly ? "?pending=1" : ""}`),
+  answerBrief: (id: string, answer: string) =>
+    v1<import("./types").Brief>(`/briefs/${id}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ answer }),
+    }),
+
   /** The org's repository history, for the commit graph. */
   repoLog: (path: string, limit = 120) =>
     v1<import("./types").RepoCommit[]>(

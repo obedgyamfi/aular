@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
+import autoAnimate from "@formkit/auto-animate";
 
 import { actions } from "~/lib/store";
 import type { Task, TaskState } from "~/lib/types";
@@ -117,7 +118,7 @@ export function TaskChip(props: {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open()}
         title={t().task}
-        class="aular-pop flex max-w-[260px] items-center gap-1.5 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 py-1 pl-2 pr-2.5 transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover"
+        class="flex max-w-[260px] items-center gap-1.5 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 py-1 pl-2 pr-2.5 transition-colors hover:border-v2-border-border-base hover:bg-v2-overlay-simple-overlay-hover"
       >
         <StateDot state={t().state} />
         <span
@@ -231,7 +232,10 @@ export function TaskStrip(props: { assigned: Task[]; delegated: Task[] }) {
   const any = () => props.assigned.length + props.delegated.length > 0;
   return (
     <Show when={any()}>
-      <div class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-v2-border-border-muted px-3 py-1.5">
+      <div
+        ref={(el) => autoAnimate(el, { duration: 160, easing: "cubic-bezier(0,0,.2,1)" })}
+        class="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-v2-border-border-muted px-3 py-1.5"
+      >
         <For each={props.assigned}>
           {(t) => <TaskChip task={t} direction="assigned" />}
         </For>

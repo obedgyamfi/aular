@@ -1,25 +1,35 @@
-import { For, Show } from "solid-js";
+import { For } from "solid-js";
 import type { JSX } from "solid-js";
-import { Icon } from "@opencode-ai/ui/icon";
+import {
+  CalendarDays,
+  MessagesSquare,
+  Network,
+  Settings,
+  SquareKanban,
+} from "lucide-solid";
 
 import { actions, state, type Register } from "~/lib/store";
 
 /**
- * The far-left rail. Icons match what each place IS: a speech bubble for
- * conversations, a task list for mission control, the org tree for the
- * organization, a drawn calendar (the icon set ships none) for schedules.
- * Hovering names the destination — an icon that needs guessing is a lock,
- * not a door.
+ * The far-left rail. Icons name what each place IS: conversations, the work
+ * board, the org's shape, the schedule. They come from lucide (ISC) rather
+ * than the design system's set, which ships no calendar, no board, and no
+ * bell — hand-drawing those was a stopgap, not a vocabulary.
+ *
+ * Hovering names the destination: an icon that needs guessing is a lock, not
+ * a door.
  */
+const ICON = { size: 18, "stroke-width": 1.6 } as const;
+
 const REGISTERS: {
   id: Register;
   label: string;
   icon: () => JSX.Element;
 }[] = [
-  { id: "chat", label: "Chat", icon: () => <Icon name="speech-bubble" size="small" /> },
-  { id: "work", label: "Work — every task, live", icon: () => <Icon name="task" size="small" /> },
-  { id: "org", label: "Organization — chart, knowledge, hiring", icon: () => <Icon name="subagent" size="small" /> },
-  { id: "calendar", label: "Calendar — routines & schedules", icon: () => <CalendarGlyph /> },
+  { id: "chat", label: "Chat — talk to your agents", icon: () => <MessagesSquare {...ICON} /> },
+  { id: "work", label: "Work — every task, live", icon: () => <SquareKanban {...ICON} /> },
+  { id: "org", label: "Organization — chart, knowledge, hiring", icon: () => <Network {...ICON} /> },
+  { id: "calendar", label: "Calendar — routines & schedules", icon: () => <CalendarDays {...ICON} /> },
 ];
 
 export function Rail() {
@@ -47,7 +57,7 @@ export function Rail() {
         current={state.register === "settings"}
         onClick={() => actions.setRegister("settings")}
       >
-        <Icon name="settings-gear" size="small" />
+        <Settings {...ICON} />
       </RailButton>
     </nav>
   );
@@ -78,17 +88,5 @@ function RailButton(props: {
         {props.label}
       </span>
     </div>
-  );
-}
-
-/** A calendar in the icon set's voice: 16×16, 1px currentColor stroke. */
-function CalendarGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect x="2.5" y="3.5" width="11" height="10" stroke="currentColor" />
-      <path d="M2.5 6.5H13.5" stroke="currentColor" />
-      <path d="M5.5 2V4.5M10.5 2V4.5" stroke="currentColor" stroke-linecap="square" />
-      <path d="M5 9H6.5M9.5 9H11M5 11.5H6.5" stroke="currentColor" />
-    </svg>
   );
 }
