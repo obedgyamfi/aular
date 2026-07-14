@@ -175,6 +175,8 @@ export function ModelSettings() {
 // ── ChatGPT / Codex: Hermes' real device-code flow ───────────────────────────
 
 function CodexConnect() {
+  // What this machine already has decides what we even offer.
+  const [have, { refetch: recheck }] = createResource(() => api.codexStatus());
   const [status, setStatus] = createSignal<{
     stage: string;
     verify_url?: string;
@@ -184,11 +186,38 @@ function CodexConnect() {
   const [busy, setBusy] = createSignal(false);
   const [models, setModels] = createSignal<string[]>([]);
   const [copied, setCopied] = createSignal(false);
+  const [error, setError] = createSignal("");
   let poll: ReturnType<typeof setInterval> | undefined;
   onCleanup(() => clearInterval(poll));
 
-  const start = async () => {
+  const alreadyHere = () => !!have()?.logged_in || !!have()?.cli_tokens;
+
+  const finish = async () => {
+    await actions.refreshModel();
+    setModels((await api.codexModels().catch(() => [])) ?? []);
+    setStatus({ stage: "done" });
+  };
+
+  /** The good path: credentials already on this machine. No login at all. */
+  const adopt = async () => {
+    if (busy()) return;
     setBusy(true);
+    setError("");
+    try {
+      await api.codexAdopt();
+      await finish();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** The fallback: OpenAI's real device-code flow. */
+  const signIn = async () => {
+    if (busy()) return;
+    setBusy(true);
+    setError("");
     try {
       const s = await api.codexConnectStart();
       setStatus(s);
@@ -197,16 +226,19 @@ function CodexConnect() {
       poll = setInterval(async () => {
         const next = await api.codexConnectStatus().catch(() => null);
         if (!next) return;
+        const hadUrl = !!status().verify_url;
         setStatus(next);
-        if (next.verify_url && !status().verify_url) void openExternal(next.verify_url);
-        if (next.stage === "done" || next.stage === "error") {
+        if (next.verify_url && !hadUrl) void openExternal(next.verify_url);
+        if (next.stage === "done") {
           clearInterval(poll);
-          if (next.stage === "done") {
-            await actions.refreshModel();
-            setModels((await api.codexModels().catch(() => [])) ?? []);
-          }
+          await finish();
+          void recheck();
+        } else if (next.stage === "error") {
+          clearInterval(poll);
         }
       }, 2000);
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -226,104 +258,144 @@ function CodexConnect() {
 
   return (
     <div class="flex flex-col gap-3 rounded-lg border border-v2-border-border-muted bg-v2-background-bg-layer-01 p-4">
-      <Show
-        when={status().stage !== "idle"}
-        fallback={
-          <>
-            <p class="text-[11.5px] leading-relaxed text-v2-text-text-muted">
-              We'll open OpenAI's sign-in page and give you a code to enter.
-              This is the same login the Codex CLI uses — your subscription,
-              your account, nothing stored but the token on this machine.
-            </p>
+      {/* 1. Already signed in on this machine → one click, no OAuth. */}
+      <Show when={status().stage === "idle" && alreadyHere()}>
+        <p class="text-[11.5px] leading-relaxed text-v2-text-text-muted">
+          {have()?.logged_in
+            ? "This machine is already signed in to ChatGPT (Codex). Use it — no sign-in needed."
+            : "The Codex CLI on this machine is signed in. AULAR can use those credentials (it keeps its own copy, so the CLI keeps working)."}
+        </p>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={busy()}
+            onClick={() => void adopt()}
+            class="w-fit rounded-md bg-v2-background-bg-accent px-3.5 py-2 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
+          >
+            {busy() ? "Connecting…" : "Use this ChatGPT account"}
+          </button>
+          <button
+            type="button"
+            disabled={busy()}
+            onClick={() => void signIn()}
+            class="rounded-md px-2.5 py-2 text-[11.5px] font-medium text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+          >
+            Sign in as someone else
+          </button>
+        </div>
+      </Show>
+
+      {/* 2. Nothing here yet → the real device-code flow. */}
+      <Show when={status().stage === "idle" && !alreadyHere() && !have.loading}>
+        <p class="text-[11.5px] leading-relaxed text-v2-text-text-muted">
+          We'll open OpenAI's sign-in page and give you a code to enter. Same
+          login the Codex CLI uses — your subscription, your account, and the
+          token never leaves this machine.
+        </p>
+        <button
+          type="button"
+          disabled={busy()}
+          onClick={() => void signIn()}
+          class="w-fit rounded-md bg-v2-background-bg-accent px-3.5 py-2 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
+        >
+          {busy() ? "Starting…" : "Sign in with ChatGPT"}
+        </button>
+      </Show>
+
+      {/* 3. The flow is running. */}
+      <Show when={status().stage === "starting" || status().stage === "code"}>
+        <p class="text-[11.5px] text-v2-text-text-muted">
+          <Show
+            when={status().stage === "code"}
+            fallback={<>Contacting OpenAI…</>}
+          >
+            Enter this code on the OpenAI page we just opened:
+          </Show>
+        </p>
+        <Show when={status().user_code}>
+          <div class="flex items-center gap-2">
+            <code class="rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-2 font-mono text-[16px] tracking-[0.15em] text-v2-text-text-base">
+              {status().user_code}
+            </code>
+            <button
+              type="button"
+              onClick={() => void copy()}
+              class="rounded-md border border-v2-border-border-base px-2.5 py-2 text-[11.5px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+            >
+              {copied() ? "Copied" : "Copy"}
+            </button>
+            <Show when={status().verify_url}>
+              <button
+                type="button"
+                onClick={() => void openExternal(status().verify_url!)}
+                class="rounded-md border border-v2-border-border-base px-2.5 py-2 text-[11.5px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+              >
+                Reopen page
+              </button>
+            </Show>
+          </div>
+        </Show>
+        <span class="aular-shimmer text-[11px] font-medium">
+          Waiting for you to finish signing in…
+        </span>
+      </Show>
+
+      {/* 4. Connected — pick what they think with. */}
+      <Show when={status().stage === "done"}>
+        <p class="text-[12px] font-medium text-v2-state-fg-success">
+          Connected. Your agents run on your ChatGPT subscription.
+        </p>
+        <Show when={models().length}>
+          <p class="text-[11px] text-v2-text-text-muted">
+            Pick the model they think with:
+          </p>
+          <div class="flex flex-wrap gap-1.5">
+            <For each={models()}>
+              {(m) => (
+                <button
+                  type="button"
+                  onClick={() => void pickModel(m)}
+                  class="rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] transition-colors"
+                  classList={{
+                    "border-v2-border-border-focus bg-v2-overlay-simple-overlay-pressed text-v2-text-text-base":
+                      state.model?.model === m,
+                    "border-v2-border-border-muted text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover":
+                      state.model?.model !== m,
+                  }}
+                >
+                  {m}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+      </Show>
+
+      {/* Whatever went wrong, in the words of the thing that failed. */}
+      <Show when={status().stage === "error" || error()}>
+        <p class="text-[11.5px] leading-relaxed text-v2-state-fg-danger">
+          {error() || status().error}
+        </p>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={busy()}
+            onClick={() => void signIn()}
+            class="w-fit rounded-md border border-v2-border-border-base px-3 py-1.5 text-[12px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+          >
+            Try sign-in again
+          </button>
+          <Show when={alreadyHere()}>
             <button
               type="button"
               disabled={busy()}
-              onClick={() => void start()}
-              class="w-fit rounded-md bg-v2-background-bg-accent px-3.5 py-2 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
+              onClick={() => void adopt()}
+              class="rounded-md bg-v2-background-bg-accent px-3 py-1.5 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
             >
-              {busy() ? "Starting…" : "Sign in with ChatGPT"}
+              Use this machine's account
             </button>
-          </>
-        }
-      >
-        <Show when={status().stage === "code" || status().stage === "starting"}>
-          <div class="flex flex-col gap-2">
-            <p class="text-[11.5px] text-v2-text-text-muted">
-              <Show when={status().stage === "starting"} fallback={<>Enter this code on the OpenAI page we just opened:</>}>
-                Contacting OpenAI…
-              </Show>
-            </p>
-            <Show when={status().user_code}>
-              <div class="flex items-center gap-2">
-                <code class="rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-2 font-mono text-[16px] tracking-[0.15em] text-v2-text-text-base">
-                  {status().user_code}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => void copy()}
-                  class="rounded-md border border-v2-border-border-base px-2.5 py-2 text-[11.5px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-                >
-                  {copied() ? "Copied" : "Copy"}
-                </button>
-                <Show when={status().verify_url}>
-                  <button
-                    type="button"
-                    onClick={() => void openExternal(status().verify_url!)}
-                    class="rounded-md border border-v2-border-border-base px-2.5 py-2 text-[11.5px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-                  >
-                    Reopen page
-                  </button>
-                </Show>
-              </div>
-            </Show>
-            <span class="aular-shimmer text-[11px] font-medium">
-              Waiting for you to finish signing in…
-            </span>
-          </div>
-        </Show>
-
-        <Show when={status().stage === "done"}>
-          <p class="text-[12px] font-medium text-v2-state-fg-success">
-            Signed in. Your agents run on your ChatGPT subscription.
-          </p>
-          <Show when={models().length}>
-            <p class="pt-1 text-[11px] text-v2-text-text-muted">
-              Pick the model they think with:
-            </p>
-            <div class="flex flex-wrap gap-1.5">
-              <For each={models()}>
-                {(m) => (
-                  <button
-                    type="button"
-                    onClick={() => void pickModel(m)}
-                    class="rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] transition-colors"
-                    classList={{
-                      "border-v2-border-border-focus bg-v2-overlay-simple-overlay-pressed text-v2-text-text-base":
-                        state.model?.model === m,
-                      "border-v2-border-border-muted text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover":
-                        state.model?.model !== m,
-                    }}
-                  >
-                    {m}
-                  </button>
-                )}
-              </For>
-            </div>
           </Show>
-        </Show>
-
-        <Show when={status().stage === "error"}>
-          <p class="text-[11.5px] text-v2-state-fg-danger">
-            {status().error || "Sign-in did not complete."}
-          </p>
-          <button
-            type="button"
-            onClick={() => void start()}
-            class="w-fit rounded-md border border-v2-border-border-base px-3 py-1.5 text-[12px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-          >
-            Try again
-          </button>
-        </Show>
+        </div>
       </Show>
     </div>
   );

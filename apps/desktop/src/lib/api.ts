@@ -221,6 +221,14 @@ export const api = {
   listScheduledJobs: () => v1<ScheduledJob[] | null>("/schedule/jobs"),
 
   // ── connecting a model (Hermes' own sign-in flows) ────────────────────
+  /** What Codex credentials this machine already has. */
+  codexStatus: () =>
+    v1<{ logged_in: boolean; cli_tokens: boolean; auth_mode?: string; source?: string; error?: string }>(
+      "/settings/model/connect/codex/status",
+    ),
+  /** Connect using credentials already on this machine — no sign-in. */
+  codexAdopt: () =>
+    v1<{ stage: string }>("/settings/model/connect/codex/import", { method: "POST" }),
   /** Start the OpenAI Codex device-code login — the flow `hermes model` runs. */
   codexConnectStart: () =>
     v1<{ stage: string; verify_url?: string; user_code?: string; error?: string }>(
