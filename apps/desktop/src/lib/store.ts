@@ -66,6 +66,8 @@ interface State {
 
   agents: Agent[];
   activeAgentId: string | null;
+  /** An agent's profile page, opened over the chat register. */
+  profileAgentId: string | null;
 
   /** agent id → conversation id, and the reverse. */
   conversationOf: Record<string, string>;
@@ -106,6 +108,7 @@ const [state, set] = createStore<State>({
   model: null,
   agents: [],
   activeAgentId: null,
+  profileAgentId: null,
   conversationOf: {},
   agentOf: {},
   messages: {},
@@ -241,7 +244,17 @@ export const actions = {
 
   setRegister(register: Register) {
     set("register", register);
+    set("profileAgentId", null);
     pushView({ register, agentId: state.activeAgentId });
+  },
+
+  /** The agent's profile page — a place, not a popup. Lives over chat. */
+  openProfile(agentId: string) {
+    set("register", "chat");
+    set("profileAgentId", agentId);
+  },
+  closeProfile() {
+    set("profileAgentId", null);
   },
 
   setChatView(view: ChatView) {

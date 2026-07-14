@@ -1,7 +1,6 @@
 import { children, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 
-import { AgentInfoModal } from "~/components/agent-info-modal";
 import { Avatar } from "~/components/avatar";
 import { UserAvatar, userName } from "~/components/user-avatar";
 import { actions, agentWorking, state } from "~/lib/store";
@@ -23,7 +22,6 @@ import type { Agent } from "~/lib/types";
 export function OrgChart() {
   const [dragging, setDragging] = createSignal<string | null>(null);
   const [dropTarget, setDropTarget] = createSignal<string | null>(null);
-  const [editing, setEditing] = createSignal<Agent | null>(null);
   const [error, setError] = createSignal("");
 
   const staff = createMemo(() => state.agents.filter((a) => a.role !== "system"));
@@ -104,7 +102,7 @@ export function OrgChart() {
                   subtitle="System · Chief of Platform"
                   dropTarget={false}
                   dragging={false}
-                  onOpen={setEditing}
+                  onOpen={(a) => actions.openProfile(a.id)}
                 />
               </>
             )}
@@ -123,7 +121,7 @@ export function OrgChart() {
                     onDragStart={setDragging}
                     onDropTarget={setDropTarget}
                     onDrop={reparent}
-                    onOpen={setEditing}
+                    onOpen={(a) => actions.openProfile(a.id)}
                   />
                 )}
               </For>
@@ -138,9 +136,6 @@ export function OrgChart() {
         </div>
       </div>
 
-      <Show when={editing()}>
-        {(a) => <AgentInfoModal agent={a()} onClose={() => setEditing(null)} />}
-      </Show>
     </div>
   );
 }

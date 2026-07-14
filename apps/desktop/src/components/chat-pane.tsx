@@ -1,7 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
-import { AgentInfoModal } from "~/components/agent-info-modal";
 import { Avatar } from "~/components/avatar";
 import { Composer } from "~/components/composer";
 import { Mark } from "~/components/logo";
@@ -30,7 +29,6 @@ import {
  * place — same thread, same composer, different rendering.
  */
 export function ChatPane() {
-  const [info, setInfo] = createSignal(false);
   const [routines, setRoutines] = createSignal(false);
 
   /** The system agent ships with every account; staff is what you build. */
@@ -65,7 +63,7 @@ export function ChatPane() {
             <header class="flex h-11 shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-3">
               <button
                 type="button"
-                onClick={() => setInfo(true)}
+                onClick={() => actions.openProfile(agent().id)}
                 aria-label="Agent profile"
                 class="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover"
               >
@@ -143,10 +141,6 @@ export function ChatPane() {
 
       <Show when={activeAgent() || hasStaff()}>
         <Composer />
-      </Show>
-
-      <Show when={info() && activeAgent()}>
-        <AgentInfoModal agent={activeAgent()!} onClose={() => setInfo(false)} />
       </Show>
 
       <Show when={routines() && activeAgent()}>

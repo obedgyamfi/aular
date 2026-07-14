@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 
 import { AddAgentModal } from "~/components/add-agent-modal";
+import { AgentProfilePage } from "~/components/agent-profile";
 import { AuthScreen } from "~/components/auth-screen";
 import { CalendarPanel } from "~/components/calendar-panel";
 import { ChatPane } from "~/components/chat-pane";
@@ -63,6 +64,11 @@ export function App() {
   /** The sidebar is the chat list; the full-width registers don't want it. */
   const withSidebar = () => state.register === "chat" && showSidebar();
 
+  const profileAgent = () =>
+    state.profileAgentId
+      ? state.agents.find((a) => a.id === state.profileAgentId)
+      : undefined;
+
   return (
     <div class="relative flex h-full min-h-0 min-w-0 flex-col bg-v2-background-bg-deep">
       <TitleBar
@@ -83,10 +89,15 @@ export function App() {
                 behavior, and the reason registers feel instant. */}
             <div
               class="flex min-h-0 min-w-0 flex-1"
-              classList={{ hidden: state.register !== "chat" }}
+              classList={{
+                hidden: state.register !== "chat" || !!state.profileAgentId,
+              }}
             >
               <ChatPane />
             </div>
+            <Show when={profileAgent()}>
+              {(a) => <AgentProfilePage agent={a()} />}
+            </Show>
             <Show when={state.register === "work"}>
               <WorkBoard />
             </Show>
