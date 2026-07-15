@@ -2,6 +2,7 @@ import { For } from "solid-js";
 import type { JSX } from "solid-js";
 import {
   CalendarDays,
+  House,
   MessagesSquare,
   Network,
   Settings,
@@ -26,6 +27,7 @@ const REGISTERS: {
   label: string;
   icon: () => JSX.Element;
 }[] = [
+  { id: "home", label: "Home — the org at a glance", icon: () => <House {...ICON} /> },
   { id: "chat", label: "Chat — talk to your agents", icon: () => <MessagesSquare {...ICON} /> },
   { id: "work", label: "Work — every task, live", icon: () => <SquareKanban {...ICON} /> },
   { id: "org", label: "Organization — chart, knowledge, hiring", icon: () => <Network {...ICON} /> },

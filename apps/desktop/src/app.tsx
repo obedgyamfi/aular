@@ -7,6 +7,7 @@ import { CalendarPanel } from "~/components/calendar-panel";
 import { ChatPane } from "~/components/chat-pane";
 import { CommandPalette } from "~/components/command-palette";
 import { ConfirmHost } from "~/components/confirm";
+import { Home } from "~/components/home";
 import { OrgPanel } from "~/components/org-panel";
 import { Rail } from "~/components/rail";
 import { SettingsPanel } from "~/components/settings-panel";
@@ -97,6 +98,9 @@ export function App() {
             </div>
             <Show when={profileAgent()}>
               {(a) => (<div class="aular-rise flex min-h-0 min-w-0 flex-1"><AgentProfilePage agent={a()} /></div>)}
+            </Show>
+            <Show when={state.register === "home"}>
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><Home /></div>
             </Show>
             <Show when={state.register === "work"}>
               <div class="aular-rise flex min-h-0 min-w-0 flex-1"><WorkBoard /></div>

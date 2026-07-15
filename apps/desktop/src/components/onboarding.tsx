@@ -38,8 +38,9 @@ export function Onboarding() {
             Welcome to AULAR
           </h1>
           <p class="mt-1.5 max-w-[380px] text-[12.5px] leading-relaxed text-v2-text-text-muted">
-            Build a team of agents that work for you — they run on this machine,
-            on your own model key. Two steps and you're talking to them.
+            You're the CEO. Hire agents that delegate to each other, report
+            back, and keep working while you're away — on this machine, on
+            your own model. Two steps and your org is live.
           </p>
         </div>
 

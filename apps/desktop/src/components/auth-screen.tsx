@@ -77,8 +77,8 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
               {isSignup() ? "Create your account" : "Sign in to AULAR"}
             </h1>
             <p class="text-center text-[12px] leading-relaxed text-v2-text-text-muted">
-              Your agents run on this machine. Your organization — who they are,
-              what they know — travels with your account.
+              An organization of agents that works while you're away — running
+              on this machine, answering to your account.
             </p>
           </div>
         </div>

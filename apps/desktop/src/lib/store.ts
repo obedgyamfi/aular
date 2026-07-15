@@ -22,7 +22,7 @@ import { TERMINAL_TASK_STATES } from "./types";
  * and REST both write here, and keeping per-agent view state (unread, preview,
  * typing) separate from the message log is what stops them fighting.
  */
-export type Register = "chat" | "work" | "org" | "calendar" | "settings";
+export type Register = "home" | "chat" | "work" | "org" | "calendar" | "settings";
 
 /**
  * How the chat register draws the conversation you're in.
@@ -107,7 +107,7 @@ interface State {
 }
 
 const [state, set] = createStore<State>({
-  register: "chat",
+  register: "home",
   chatView: "chat",
   settingsSection: "general",
   user: null,
@@ -129,7 +129,7 @@ const [state, set] = createStore<State>({
   streaming: {},
   replyTo: null,
   attachment: null,
-  history: [{ register: "chat", agentId: null }],
+  history: [{ register: "home", agentId: null }],
   historyAt: 0,
   error: null,
 });
@@ -226,12 +226,31 @@ function clearWorking(convoId: string) {
   set("working", convoId, false);
 }
 
+/**
+ * Previews are read as one plain line, so markdown markers are noise there —
+ * "**Decision needed**" must read "Decision needed". Structure-only lines
+ * (headings, bullets) keep their text; links keep their label.
+ */
+export function previewText(content: string): string {
+  return content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(^|\s)[*_]([^*_]+)[*_]/g, "$1$2")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** The chat list's subtitle. An older event must never overwrite a newer one. */
 function bumpPreview(agentId: string, msg: Message) {
   const current = state.preview[agentId];
   if (current && current.at > msg.created_at) return;
   set("preview", agentId, {
-    text: msg.content,
+    text: previewText(msg.content),
     at: msg.created_at,
     sender: msg.sender_type,
   });
@@ -322,7 +341,7 @@ export const actions = {
           s.unread[c.agent_profile_id] = c.unread_count ?? 0;
           if (c.last_message && c.last_message_at) {
             s.preview[c.agent_profile_id] = {
-              text: c.last_message,
+              text: previewText(c.last_message),
               at: c.last_message_at,
               sender: (c.last_message_sender as Preview["sender"]) ?? "agent",
             };
