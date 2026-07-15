@@ -1,4 +1,4 @@
-import { createResource, createSignal, Show } from "solid-js";
+import { createEffect, createResource, createSignal, Show } from "solid-js";
 
 import { Mark } from "~/components/logo";
 import { api } from "~/lib/api";
@@ -21,6 +21,15 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
   const [health] = createResource(() => api.health().catch(() => null));
 
   const [mode, setMode] = createSignal<"signin" | "signup">("signin");
+  // A fresh install has nobody to sign in — open on "create account".
+  // Only auto-switch before the user has touched the form.
+  const [touched, setTouched] = createSignal(false);
+  createEffect(() => {
+    const h = health();
+    if (!touched() && h && h.signup !== "closed" && h.has_accounts === false) {
+      setMode("signup");
+    }
+  });
   const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [invite, setInvite] = createSignal("");
@@ -89,7 +98,7 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
             autocomplete="email"
             placeholder="Email"
             value={email()}
-            onInput={(e) => setEmail(e.currentTarget.value)}
+            onInput={(e) => { setTouched(true); setEmail(e.currentTarget.value); }}
             class={field}
           />
           <input
@@ -97,7 +106,7 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
             autocomplete={isSignup() ? "new-password" : "current-password"}
             placeholder="Password"
             value={password()}
-            onInput={(e) => setPassword(e.currentTarget.value)}
+            onInput={(e) => { setTouched(true); setPassword(e.currentTarget.value); }}
             class={field}
           />
 
@@ -135,6 +144,7 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
           <button
             type="button"
             onClick={() => {
+              setTouched(true);
               setMode(isSignup() ? "signin" : "signup");
               setError("");
             }}

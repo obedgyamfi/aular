@@ -128,6 +128,8 @@ export interface Health {
   max_agents: number;
   /** Whether this server accepts new accounts, and on what terms. */
   signup?: "closed" | "invite" | "open";
+  /** False on a fresh install — the auth screen opens on "create account". */
+  has_accounts?: boolean;
   /**
    * Org surfaces this backend actually serves ("tasks", "briefs").
    * Absent on older backends that predate the field — treated as

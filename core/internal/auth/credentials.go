@@ -31,6 +31,16 @@ func (c *Credentials) SetPassword(ctx context.Context, userID, password string) 
 	return err
 }
 
+// HasAny reports whether anyone can log in at all — a fresh install has no
+// credentials, and the auth screen should open on "create account", not a
+// locked door.
+func (c *Credentials) HasAny(ctx context.Context) (bool, error) {
+	var n int
+	err := c.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_credentials`).Scan(&n)
+	return n > 0, err
+}
+
 // VerifyLogin resolves email → user id iff the password matches. A uniform
 // ErrBadLogin covers unknown email, no credentials, and wrong password.
 func (c *Credentials) VerifyLogin(ctx context.Context, email, password string) (string, error) {

@@ -9,15 +9,22 @@ import (
 )
 
 // GET /healthz — liveness, plus what the UI needs to present the app honestly:
-// which engine is linked, the agent cap it imposes (0 = unlimited), and which
-// org surfaces this build actually serves. The UI shows the task board and
-// briefs only when they're listed — same client, honest against any backend.
-func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+// which engine is linked, the agent cap it imposes (0 = unlimited), which org
+// surfaces this build actually serves, and whether the door is open. The auth
+// screen reads `signup` to offer account creation and `has_accounts` to open
+// a fresh install on "create account" instead of a sign-in nobody can pass.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	hasAccounts, err := s.credentials.HasAny(r.Context())
+	if err != nil {
+		hasAccounts = true // fail toward the quieter screen
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":       "ok",
 		"engine":       s.engine.Name(),
 		"max_agents":   s.engine.MaxAgents(),
 		"capabilities": s.engineCapabilities(),
+		"signup":       s.cfg.SignupMode,
+		"has_accounts": hasAccounts,
 	})
 }
 
