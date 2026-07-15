@@ -19,6 +19,7 @@ package engine
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"time"
 )
 
@@ -137,6 +138,39 @@ type Engine interface {
 
 	// MaxAgents caps how many agents a user may create; 0 means unlimited.
 	MaxAgents() int
+}
+
+// ─── Optional: an engine with its own HTTP surface ──────────────────────────
+
+// RouteProvider is an optional Engine extension. An engine that has API
+// surfaces of its own — the task board, briefs — returns them here, keyed by
+// the /api/v1-relative prefix they own (e.g. "/tasks", "/briefs"). The shell
+// mounts each behind its session auth, injects the caller via WithUserID, and
+// reports the mounted prefixes as capabilities in /healthz so the UI shows
+// only what this build can actually do.
+//
+// The free engine does not implement this: without an org there are no tasks
+// to serve, and the honest answer at those routes is the shell's stub (an
+// empty list for reads, 404 for actions).
+type RouteProvider interface {
+	APIRoutes() map[string]http.Handler
+}
+
+// The engine package owns the context key so both modules agree on it without
+// the engine importing the shell's internals.
+type ctxKey struct{}
+
+// WithUserID stamps the authenticated caller onto a request context before it
+// crosses into engine handlers.
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, ctxKey{}, userID)
+}
+
+// UserID reads the caller stamped by the shell; "" means unauthenticated
+// (engine handlers should treat that as impossible — the shell gates first).
+func UserID(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKey{}).(string)
+	return v
 }
 
 // ─── The free engine ────────────────────────────────────────────────────────

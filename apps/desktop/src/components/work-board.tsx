@@ -4,7 +4,7 @@ import autoAnimate from "@formkit/auto-animate";
 import { Avatar } from "~/components/avatar";
 import { RepoGraph } from "~/components/repo-graph";
 import { age, StateDot, STATE_META } from "~/components/task-state";
-import { actions, state } from "~/lib/store";
+import { actions, orgCapable, state } from "~/lib/store";
 import type { Task, TaskState } from "~/lib/types";
 import { TERMINAL_TASK_STATES } from "~/lib/types";
 
@@ -33,7 +33,12 @@ const LANES: { states: TaskState[]; label: string; icon: TaskState }[] = [
 const FINISHED_SHOWN = 25;
 
 export function WorkBoard() {
-  const [view, setView] = createSignal<"board" | "commits">("board");
+  // Without an org engine there is no board — the register opens on the git
+  // history, which the shell serves on its own.
+  const hasBoard = () => orgCapable("tasks");
+  const [view, setView] = createSignal<"board" | "commits">(
+    orgCapable("tasks") ? "board" : "commits",
+  );
   const byLane = createMemo(() => {
     const all = Object.values(state.tasks).sort((a, b) =>
       (b.state_updated_at ?? b.created_at).localeCompare(a.state_updated_at ?? a.created_at),
@@ -54,10 +59,12 @@ export function WorkBoard() {
     <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
       <header class="flex h-11 shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-4">
         <h1 class="text-[13px] font-medium text-v2-text-text-base">Work</h1>
-        <div class="ml-1 flex items-center gap-px overflow-hidden rounded-md border border-v2-border-border-muted">
-          <ViewTab active={view() === "board"} onClick={() => setView("board")}>Board</ViewTab>
-          <ViewTab active={view() === "commits"} onClick={() => setView("commits")}>Commits</ViewTab>
-        </div>
+        <Show when={hasBoard()}>
+          <div class="ml-1 flex items-center gap-px overflow-hidden rounded-md border border-v2-border-border-muted">
+            <ViewTab active={view() === "board"} onClick={() => setView("board")}>Board</ViewTab>
+            <ViewTab active={view() === "commits"} onClick={() => setView("commits")}>Commits</ViewTab>
+          </div>
+        </Show>
         <p class="text-[11.5px] text-v2-text-text-muted">
           {view() === "board"
             ? "every task in the org, live — click a card to open the conversation behind it"

@@ -55,6 +55,16 @@ func hermesPython() string {
 	return filepath.Join(hermesAgentDir(), "venv", "bin", "python3")
 }
 
+// hermesMissing reports (in words a person can act on) when the Hermes
+// runtime isn't installed — every connect path needs it, and "no output"
+// helps no one.
+func hermesMissing() string {
+	if _, err := os.Stat(hermesPython()); err != nil {
+		return "the Hermes agent runtime isn't installed on this machine yet"
+	}
+	return ""
+}
+
 // hermesPy runs a snippet inside Hermes' venv with hermes_cli importable,
 // scoped to the caller's own Hermes home.
 func (s *Server) hermesPy(ctx context.Context, script string) *exec.Cmd {
@@ -85,6 +95,10 @@ type codexStatus struct {
 
 // GET /api/v1/settings/model/connect/codex/status
 func (s *Server) handleCodexStatus(w http.ResponseWriter, r *http.Request) {
+	if msg := hermesMissing(); msg != "" {
+		writeJSON(w, http.StatusOK, codexStatus{Error: msg})
+		return
+	}
 	out, err := s.hermesPy(r.Context(), `
 import json
 from hermes_cli import auth
@@ -119,6 +133,10 @@ print("HERMES_JSON " + json.dumps(status), flush=True)
 // (~/.codex/auth.json, copied so a CLI refresh can't break us). No sign-in, no
 // device code, no rate limit.
 func (s *Server) handleCodexImport(w http.ResponseWriter, r *http.Request) {
+	if msg := hermesMissing(); msg != "" {
+		writeError(w, http.StatusBadGateway, msg)
+		return
+	}
 	out, err := s.hermesPy(r.Context(), `
 from hermes_cli import auth
 st = {}
@@ -147,6 +165,10 @@ print("HERMES_CONNECT_OK", flush=True)
 // live flow with a code is returned as-is instead of burning another code (a
 // second request would earn a 429 from OpenAI).
 func (s *Server) handleCodexConnectStart(w http.ResponseWriter, r *http.Request) {
+	if msg := hermesMissing(); msg != "" {
+		writeError(w, http.StatusBadGateway, msg)
+		return
+	}
 	userID := s.ctxUserID(r.Context())
 	codexConnect.mu.Lock()
 	defer codexConnect.mu.Unlock()

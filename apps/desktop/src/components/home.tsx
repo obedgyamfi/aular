@@ -12,6 +12,7 @@ import {
   agentWorking,
   inputRequiredTasks,
   liveTasks,
+  orgCapable,
   pendingBriefs,
   state,
 } from "~/lib/store";
@@ -121,7 +122,10 @@ export function Home() {
           </Show>
 
           {/* ── the office: who, and what's moving ───────────────────────── */}
-          <div class="grid grid-cols-1 gap-4 pt-2 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <div
+            class="grid grid-cols-1 gap-4 pt-2"
+            classList={{ "lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]": orgCapable("tasks") }}
+          >
             <section>
               <SectionLabel
                 action={{ label: "Org chart", onClick: () => actions.setRegister("org") }}
@@ -149,6 +153,10 @@ export function Home() {
               </div>
             </section>
 
+            {/* Only when this backend runs an org — the open shell has no
+                dispatch, so an empty "In flight" would be a promise the build
+                can't keep. */}
+            <Show when={orgCapable("tasks")}>
             <section>
               <SectionLabel
                 action={{ label: "Mission control", onClick: () => actions.setRegister("work") }}
@@ -181,6 +189,7 @@ export function Home() {
                 </Show>
               </div>
             </section>
+            </Show>
           </div>
 
           {/* ── while you were away ──────────────────────────────────────── */}

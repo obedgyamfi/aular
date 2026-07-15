@@ -691,6 +691,16 @@ export const totalUnread = (): number =>
 
 // ── tasks ────────────────────────────────────────────────────────────────────
 
+/**
+ * Whether the connected backend serves an org surface. Backends that predate
+ * the capabilities field have everything (the only such backend is the org
+ * prototype), so absence means capable — an explicit list is respected.
+ */
+export const orgCapable = (cap: "tasks" | "briefs"): boolean => {
+  const caps = state.health?.capabilities;
+  return !caps || caps.includes(cap);
+};
+
 const taskTouchedAt = (t: Task) => t.state_updated_at ?? t.created_at;
 
 /** Tasks whose lifecycle is still running, newest activity first. */

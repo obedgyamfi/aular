@@ -191,6 +191,22 @@ func (s *Server) Router() http.Handler {
 		r.Get("/memory", s.handleGetMemory)
 		r.Get("/repo/log", s.handleRepoLog)
 
+		// The engine's own surfaces (tasks, briefs), if this build has one.
+		// Without an org there are no tasks: reads answer with the empty
+		// truth, actions with 404 — the UI hides these behind /healthz
+		// capabilities either way.
+		if rp, ok := s.engine.(engine.RouteProvider); ok {
+			for prefix, h := range rp.APIRoutes() {
+				r.Mount(prefix, s.withEngineUser(h))
+			}
+		} else {
+			for _, prefix := range []string{"/tasks", "/briefs"} {
+				r.Get(prefix, func(w http.ResponseWriter, _ *http.Request) {
+					writeJSON(w, http.StatusOK, []any{})
+				})
+			}
+		}
+
 		r.Post("/media", s.handleUploadMedia)
 	})
 

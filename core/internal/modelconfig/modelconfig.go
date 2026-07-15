@@ -100,6 +100,11 @@ func ReadFrom(home string) (*Config, error) {
 		return nil, err
 	}
 	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		// First run on a machine with no Hermes config yet — not an error,
+		// just nothing connected. The UI's answer is its onboarding step.
+		return &Config{}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("modelconfig: read config: %w", err)
 	}

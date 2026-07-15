@@ -128,6 +128,12 @@ export interface Health {
   max_agents: number;
   /** Whether this server accepts new accounts, and on what terms. */
   signup?: "closed" | "invite" | "open";
+  /**
+   * Org surfaces this backend actually serves ("tasks", "briefs").
+   * Absent on older backends that predate the field — treated as
+   * full-capability, since the only such backend is the org prototype.
+   */
+  capabilities?: string[];
 }
 
 /** The envelope pushed over the WebSocket. */
