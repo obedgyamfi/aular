@@ -175,7 +175,9 @@ func (i *Installer) install(ctx context.Context, dataDir string) error {
 	}
 
 	i.set("verify", "")
-	out, err := exec.CommandContext(ctx, venvBin(venv, "hermes"), "--version").CombinedOutput()
+	verify := exec.CommandContext(ctx, venvBin(venv, "hermes"), "--version")
+	HideConsole(verify)
+	out, err := verify.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("hermes did not start after install: %s", strings.TrimSpace(string(out)))
 	}
@@ -186,6 +188,7 @@ func (i *Installer) install(ctx context.Context, dataDir string) error {
 // progress detail — a long pip install with a frozen label reads as a hang.
 func (i *Installer) run(ctx context.Context, bin string, args ...string) error {
 	cmd := exec.CommandContext(ctx, bin, args...)
+	HideConsole(cmd)
 	var tail bytes.Buffer
 	cmd.Stdout = &progressWriter{i: i, tail: &tail}
 	cmd.Stderr = cmd.Stdout

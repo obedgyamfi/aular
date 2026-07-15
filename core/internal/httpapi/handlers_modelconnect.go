@@ -98,6 +98,7 @@ func (s *Server) hermesPy(ctx context.Context, script string) *exec.Cmd {
 	// insert is inert (the dir doesn't exist).
 	full := "import sys\nsys.path.insert(0, " + quoted(hermesAgentDir()) + ")\n" + script
 	cmd := exec.Command(s.hermesPython(), "-u", "-c", full)
+	hermesboot.HideConsole(cmd)
 	cmd.Env = append(os.Environ(), "HERMES_HOME="+s.userHome(ctx))
 	return cmd
 }

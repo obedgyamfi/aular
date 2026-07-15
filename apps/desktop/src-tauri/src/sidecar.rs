@@ -133,6 +133,13 @@ pub fn spawn_gateway(app: &AppHandle) {
     if let Some(e) = errs {
         cmd.stderr(std::process::Stdio::from(e));
     }
+    // A console-subsystem child of a GUI app pops a visible console window on
+    // Windows — the gateway would haunt the taskbar as a black box.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
 
     match cmd.spawn() {
         Ok(child) => {

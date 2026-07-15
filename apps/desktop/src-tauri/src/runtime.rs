@@ -28,6 +28,11 @@ pub fn data_dir() -> PathBuf {
 }
 
 fn dirs_config() -> Option<PathBuf> {
+    // Windows puts per-user app data in %APPDATA%, not a dotfile dir.
+    #[cfg(windows)]
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        return Some(PathBuf::from(appdata));
+    }
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| dirs_home().map(|h| h.join(".config")))
