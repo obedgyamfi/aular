@@ -63,9 +63,48 @@ def png(path, size):
         + chunk(b"IDAT", zlib.compress(raw, 9))
         + chunk(b"IEND", b""))
 
+def png_bytes(size):
+    """The same render, returned instead of written (for the containers)."""
+    import io, tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    tmp.close()
+    png(tmp.name, size)
+    data = open(tmp.name, "rb").read()
+    os.unlink(tmp.name)
+    return data
+
+
+def ico(path, sizes):
+    """icon.ico — the Windows resource icon. ICO entries may be whole PNGs
+    (Vista+), so this is just a directory over the renders."""
+    images = [(s, png_bytes(s)) for s in sizes]
+    out = struct.pack("<HHH", 0, 1, len(images))
+    offset = 6 + 16 * len(images)
+    dirs, blobs = b"", b""
+    for s, data in images:
+        dirs += struct.pack(
+            "<BBBBHHII", s % 256, s % 256, 0, 0, 1, 32, len(data), offset)
+        blobs += data
+        offset += len(data)
+    open(path, "wb").write(out + dirs + blobs)
+
+
+def icns(path):
+    """icon.icns — the mac icon. ICNS chunks are typed PNGs."""
+    types = [(b"ic11", 32), (b"ic07", 128), (b"ic13", 256),
+             (b"ic08", 256), (b"ic09", 512)]
+    body = b""
+    for t, s in types:
+        data = png_bytes(s)
+        body += t + struct.pack(">I", 8 + len(data)) + data
+    open(path, "wb").write(b"icns" + struct.pack(">I", 8 + len(body)) + body)
+
+
 here = os.path.dirname(os.path.abspath(__file__))
 for s in (32, 128, 256, 512):
     png(os.path.join(here, f"{s}x{s}.png"), s)
 png(os.path.join(here, "128x128@2x.png"), 256)
 png(os.path.join(here, "icon.png"), 512)
+ico(os.path.join(here, "icon.ico"), (16, 24, 32, 48, 64, 128, 256))
+icns(os.path.join(here, "icon.icns"))
 print("icons rendered from the mark")
