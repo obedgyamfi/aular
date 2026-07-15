@@ -38,6 +38,50 @@ bundle its CLI. Rust holds no product logic. If the backend dies it is
 restarted; when the window closes the backend is killed, so no orphan can hold
 the port or a database lock.
 
+## The runtime seam
+
+AULAR is closer to runtime-agnostic than it looks. The conversation loop
+never speaks to Hermes directly: core hands turns to a gateway over HTTP
+(`internal/infra/aularadapter`), and the runtime answers through four
+internal callbacks — `/internal/deliver`, `/internal/edit`,
+`/internal/activity`, `/internal/tool-event` — authenticated by a shared
+token. The Hermes side of that contract is a plugin *we* ship
+(`plugins/aular` + the `aular-toolfeed` hook): Hermes was adapted to
+AULAR's protocol, not AULAR to Hermes. The org protocol is runtime-neutral
+too — `AULAR_DISPATCH` / `AULAR_STATUS` / `AULAR_BRIEF` are prompt-level
+conventions any runtime that follows a system prompt can emit.
+
+Any runtime that can accept a turn, stream a reply, and report tool calls
+could sit behind the seam. What still assumes Hermes is the operational
+periphery, and all of it is corralled where the package names confess:
+
+| package | reads/writes | feature it powers |
+|---|---|---|
+| `infra/hermesstate` | Hermes' `state.db` | token metering, analytics |
+| `infra/hermescron` | Hermes' `cron/jobs.json` | routines, calendar |
+| `infra/hermesmemory` | Hermes' memory graph | memory viewer |
+| `internal/modelconfig` | `config.yaml` / `.env` | BYOK model settings |
+| `infra/hermesproc` | `hermes gateway run` | per-user supervision |
+| `httpapi/handlers_modelconnect` | Hermes' venv python | provider sign-in flows |
+
+`httpapi/runtime.go` is the single resolver between "a request user" and
+"their runtime's paths and adapter" — new Hermes knowledge goes in
+`infra/hermes*` behind that seam, never inline in handlers.
+
+Two rules keep the seam honest:
+
+1. **Hermes stays read-only.** AULAR integrates through its published
+   surfaces (plugins, hooks, profile env, state files); it never patches
+   Hermes source. Anything Hermes can't do from the outside is an upstream
+   issue, not a fork.
+2. **Do not extract a driver interface speculatively.** One implementation
+   always draws the abstraction lines wrong. The trigger for a `Runtime`
+   driver interface is a concrete second runtime (the Claude Agent SDK is
+   the natural candidate) — pulled by a real user, not pushed by
+   architecture taste. Until then, deep Hermes integration is a feature:
+   the metering, memory and sign-in surfaces exist *because* we read one
+   runtime's internals well.
+
 ## Frontend
 
 SolidJS + Vite + Tailwind v4 on `@opencode-ai/ui` (MIT). Their token and
