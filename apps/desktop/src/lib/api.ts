@@ -14,6 +14,7 @@ import type {
   ModelSettingsInput,
   OrgDocument,
   Routine,
+  RuntimeStatus,
   ScheduledJob,
   Task,
   TokenUsage,
@@ -79,6 +80,8 @@ export const api = {
 
   // ── account ───────────────────────────────────────────────────────────
   health: () => call<Health>("/healthz"),
+  runtimeStatus: () => v1<RuntimeStatus>("/runtime/status"),
+  runtimeInstall: () => v1<RuntimeStatus>("/runtime/install", { method: "POST" }),
   me: () => call<AuthUser>("/auth/me"),
   login: async (email: string, password: string) => {
     const out = await call<{ user: AuthUser; token: string }>("/auth/login", {

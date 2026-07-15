@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/obedgyamfi/aular/core/internal/infra/hermesboot"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermespaths"
 )
 
@@ -60,18 +61,30 @@ func hermesAgentDir() string {
 	return dir
 }
 
-func hermesPython() string {
-	if runtime.GOOS == "windows" {
-		return filepath.Join(hermesAgentDir(), "venv", "Scripts", "python.exe")
+// hermesPython finds an interpreter that can import hermes_cli: a source
+// install's venv, or the app-managed runtime hermesboot installed (where
+// hermes_cli is a site-package). "" means no runtime on this machine.
+func (s *Server) hermesPython() string {
+	if rt := hermesboot.Detect(s.cfg.DataDir); rt != nil && rt.Python != "" {
+		return rt.Python
 	}
-	return filepath.Join(hermesAgentDir(), "venv", "bin", "python3")
+	// hermes on PATH without a known venv — the source layouts are the last
+	// honest guess.
+	p := filepath.Join(hermesAgentDir(), "venv", "bin", "python3")
+	if runtime.GOOS == "windows" {
+		p = filepath.Join(hermesAgentDir(), "venv", "Scripts", "python.exe")
+	}
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	return ""
 }
 
 // hermesMissing reports (in words a person can act on) when the Hermes
 // runtime isn't installed — every connect path needs it, and "no output"
 // helps no one.
-func hermesMissing() string {
-	if _, err := os.Stat(hermesPython()); err != nil {
+func (s *Server) hermesMissing() string {
+	if s.hermesPython() == "" {
 		return "the Hermes agent runtime isn't installed on this machine yet"
 	}
 	return ""
@@ -80,10 +93,11 @@ func hermesMissing() string {
 // hermesPy runs a snippet inside Hermes' venv with hermes_cli importable,
 // scoped to the caller's own Hermes home.
 func (s *Server) hermesPy(ctx context.Context, script string) *exec.Cmd {
-	dir := hermesAgentDir()
-	full := "import sys\nsys.path.insert(0, " + quoted(dir) + ")\n" + script
-	cmd := exec.Command(hermesPython(), "-u", "-c", full)
-	cmd.Dir = dir
+	// The sys.path insert serves source installs, where hermes_cli lives
+	// beside the venv; in a managed install it's a site-package and the
+	// insert is inert (the dir doesn't exist).
+	full := "import sys\nsys.path.insert(0, " + quoted(hermesAgentDir()) + ")\n" + script
+	cmd := exec.Command(s.hermesPython(), "-u", "-c", full)
 	cmd.Env = append(os.Environ(), "HERMES_HOME="+s.userHome(ctx))
 	return cmd
 }
@@ -107,7 +121,7 @@ type codexStatus struct {
 
 // GET /api/v1/settings/model/connect/codex/status
 func (s *Server) handleCodexStatus(w http.ResponseWriter, r *http.Request) {
-	if msg := hermesMissing(); msg != "" {
+	if msg := s.hermesMissing(); msg != "" {
 		writeJSON(w, http.StatusOK, codexStatus{Error: msg})
 		return
 	}
@@ -145,7 +159,7 @@ print("HERMES_JSON " + json.dumps(status), flush=True)
 // (~/.codex/auth.json, copied so a CLI refresh can't break us). No sign-in, no
 // device code, no rate limit.
 func (s *Server) handleCodexImport(w http.ResponseWriter, r *http.Request) {
-	if msg := hermesMissing(); msg != "" {
+	if msg := s.hermesMissing(); msg != "" {
 		writeError(w, http.StatusBadGateway, msg)
 		return
 	}
@@ -177,7 +191,7 @@ print("HERMES_CONNECT_OK", flush=True)
 // live flow with a code is returned as-is instead of burning another code (a
 // second request would earn a 429 from OpenAI).
 func (s *Server) handleCodexConnectStart(w http.ResponseWriter, r *http.Request) {
-	if msg := hermesMissing(); msg != "" {
+	if msg := s.hermesMissing(); msg != "" {
 		writeError(w, http.StatusBadGateway, msg)
 		return
 	}

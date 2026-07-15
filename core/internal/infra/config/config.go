@@ -4,12 +4,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type Config struct {
 	Port            string
 	DBPath          string // path to the SQLite database file
 	MediaDir        string // directory for media delivered by the Hermes AULAR plugin
+	DataDir         string // the app's own data directory (managed runtime lives here)
 	AularAdapterURL string // base URL of the AULAR Hermes gateway platform adapter's inbound endpoint
 	InternalToken   string // shared secret for /internal/deliver (the adapter delivers agent messages here)
 	CoreAPIURL      string // this API's own URL, written into per-user Hermes profiles
@@ -39,6 +41,8 @@ func Load() (*Config, error) {
 		SignupMode:      getenv("AULAR_SIGNUP_MODE", "closed"),
 		DevStaticAuth:   os.Getenv("AULAR_DEV_STATIC_AUTH") == "1",
 	}
+	// Default beside the database — the one directory we know is ours.
+	c.DataDir = getenv("AULAR_DATA_DIR", filepath.Dir(c.DBPath))
 	if c.DevStaticAuth && (c.APIToken == "" || c.UserID == "") {
 		return nil, fmt.Errorf("config: AULAR_DEV_STATIC_AUTH=1 requires AULAR_API_TOKEN and AULAR_USER_ID")
 	}

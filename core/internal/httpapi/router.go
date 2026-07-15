@@ -18,6 +18,7 @@ import (
 	"github.com/obedgyamfi/aular/core/internal/conversations"
 	"github.com/obedgyamfi/aular/core/internal/infra/aularadapter"
 	"github.com/obedgyamfi/aular/core/internal/infra/config"
+	"github.com/obedgyamfi/aular/core/internal/infra/hermesboot"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermescron"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermesmemory"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermesproc"
@@ -59,6 +60,7 @@ type Server struct {
 	hermesCron        *hermescron.Client
 	hermesMemory      *hermesmemory.Client
 	hermesState       *hermesstate.Client
+	bootInstaller     hermesboot.Installer
 
 	// Tracks agent-spec message ids already turned into agents, so a streamed
 	// build reply (seen across deliver + finalizing edit) creates only once.
@@ -182,6 +184,9 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/{id}", s.handleUpdateRoutine)
 			r.Delete("/{id}", s.handleDeleteRoutine)
 		})
+
+		r.Get("/runtime/status", s.handleRuntimeStatus)
+		r.Post("/runtime/install", s.handleRuntimeInstall)
 
 		r.Get("/schedule/jobs", s.handleListScheduledJobs)
 		r.Get("/analytics/daily", s.handleAnalyticsDaily)

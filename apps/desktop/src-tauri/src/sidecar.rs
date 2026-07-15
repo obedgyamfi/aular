@@ -43,6 +43,7 @@ pub fn spawn(app: &AppHandle, licensed: bool) -> Result<JoinHandle<()>, Box<dyn 
         // a sidecar's working directory is nobody's promise.
         .env("AULAR_DB_PATH", data.join("aular.db"))
         .env("AULAR_MEDIA_DIR", data.join("media"))
+        .env("AULAR_DATA_DIR", &data)
         // The backend reads and writes Hermes state (model config, sessions,
         // memories) in the app's own profile, never the user's ~/.hermes.
         .env("HERMES_ROOT", crate::runtime::hermes_home())
@@ -117,7 +118,15 @@ pub fn spawn_gateway(app: &AppHandle) {
     };
     let errs = out.try_clone().ok();
 
-    let mut cmd = std::process::Command::new("hermes");
+    let Some(hermes) = crate::runtime::hermes_executable() else {
+        log::error!(
+            "runtime: no Hermes on this machine — the app will offer to install \
+             the managed runtime during onboarding"
+        );
+        return;
+    };
+
+    let mut cmd = std::process::Command::new(&hermes);
     cmd.args(["gateway", "run"])
         .env("HERMES_HOME", &home)
         .stdout(std::process::Stdio::from(out));
@@ -128,16 +137,25 @@ pub fn spawn_gateway(app: &AppHandle) {
     match cmd.spawn() {
         Ok(child) => {
             log::info!(
-                "runtime: agent runtime starting (profile {}, port {})",
+                "runtime: agent runtime starting ({}, profile {}, port {})",
+                hermes.display(),
                 home.display(),
                 crate::runtime::GATEWAY_PORT
             );
             app.state::<Gateway>().0.lock().unwrap().replace(child);
         }
-        Err(e) => log::error!(
-            "runtime: could not start the agent runtime (is `hermes` on PATH?): {e}"
-        ),
+        Err(e) => log::error!("runtime: could not start {}: {e}", hermes.display()),
     }
+}
+
+/// Restart the gateway — the onboarding flow invokes this right after the
+/// managed runtime finishes installing, so agents can think without an app
+/// relaunch. Idempotent: a missing gateway is simply started.
+#[tauri::command]
+pub fn restart_agent_runtime(app: AppHandle) {
+    log::info!("runtime: restart requested from the app");
+    shutdown_gateway(&app);
+    spawn_gateway(&app);
 }
 
 /// Stop the gateway. Called on exit, alongside the backend.

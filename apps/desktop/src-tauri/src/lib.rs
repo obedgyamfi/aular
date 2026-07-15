@@ -32,6 +32,7 @@ pub fn run() {
             sidecar::spawn_gateway(app.handle());
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![sidecar::restart_agent_runtime])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 sidecar::shutdown(window.app_handle());

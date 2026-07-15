@@ -71,6 +71,15 @@ jobs:
         working-directory: core
         run: go test ./...
 
+      # The proof that Hermes actually installs and runs on this OS: a real
+      # uv download, a managed Python, hermes-agent[all] from PyPI, and
+      # `hermes --version`. This is the whole reason the Windows job exists.
+      - name: Hermes bootstrap smoke test
+        working-directory: core
+        env:
+          AULAR_SMOKE: "1"
+        run: go test ./internal/infra/hermesboot/ -run TestInstallSmoke -v -timeout 25m
+
       - run: npm ci
 
       - name: Typecheck

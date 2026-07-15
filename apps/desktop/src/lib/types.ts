@@ -333,3 +333,14 @@ export interface Brief {
   answered_at?: string;
   created_at: string;
 }
+
+/** The agent runtime, as onboarding sees it (GET /api/v1/runtime/status). */
+export interface RuntimeStatus {
+  installed: boolean;
+  runtime?: { hermes_bin: string; python?: string; source: string };
+  install: {
+    stage: "" | "idle" | "uv" | "python" | "hermes" | "verify" | "done" | "error";
+    detail?: string;
+    error?: string;
+  };
+}

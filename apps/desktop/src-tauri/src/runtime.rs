@@ -85,6 +85,36 @@ pub fn internal_token() -> String {
 pub const API_PORT: &str = "8787";
 pub const GATEWAY_PORT: &str = "8644";
 
+/// Where the hermes executable actually is: the user's own install (PATH)
+/// wins; otherwise the managed runtime the backend bootstraps into our data
+/// directory. None means neither exists yet — onboarding's problem, not ours.
+pub fn hermes_executable() -> Option<PathBuf> {
+    if let Ok(path) = which("hermes") {
+        return Some(path);
+    }
+    let venv = data_dir().join("hermes-runtime").join("venv");
+    let managed = if cfg!(windows) {
+        venv.join("Scripts").join("hermes.exe")
+    } else {
+        venv.join("bin").join("hermes")
+    };
+    managed.exists().then_some(managed)
+}
+
+/// A minimal `which` — enough to answer "is hermes on PATH", without a crate.
+fn which(name: &str) -> Result<PathBuf, ()> {
+    let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat", ""] } else { &[""] };
+    for dir in std::env::split_paths(&std::env::var_os("PATH").ok_or(())?) {
+        for ext in exts {
+            let candidate = dir.join(format!("{name}{ext}"));
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(())
+}
+
 /// Prepare the app's Hermes profile: it needs the AULAR platform plugin and
 /// the tool-feed hook, plus an .env that points the gateway back at our own
 /// backend. The .env is authoritative — Hermes reads a profile's .env over the
