@@ -46,9 +46,17 @@ var codexConnect struct {
 }
 
 // hermesAgentDir is the shared Hermes code install; profiles clone state, not
-// the venv.
+// the venv. When HERMES_ROOT points at an app-owned profile (the desktop
+// sidecar), the install itself still lives in the user's ~/.hermes.
 func hermesAgentDir() string {
-	return filepath.Join(hermespaths.Root(), "hermes-agent")
+	dir := filepath.Join(hermespaths.Root(), "hermes-agent")
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".hermes", "hermes-agent")
+	}
+	return dir
 }
 
 func hermesPython() string {

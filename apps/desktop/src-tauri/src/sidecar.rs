@@ -33,11 +33,23 @@ pub const PORT: &str = crate::runtime::API_PORT;
 /// Spawn the backend sidecar and pipe its output into the app log. Returns the
 /// task that drains the process's stdout/stderr.
 pub fn spawn(app: &AppHandle, licensed: bool) -> Result<JoinHandle<()>, Box<dyn std::error::Error>> {
+    let data = crate::runtime::data_dir();
     let sidecar = app
         .shell()
         .sidecar("aular-core")?
-        .env("AULAR_PORT", PORT)
+        .env("PORT", PORT)
         .env("AULAR_LICENSED", if licensed { "1" } else { "0" })
+        // Everything the backend owns lives in the app's own data directory —
+        // a sidecar's working directory is nobody's promise.
+        .env("AULAR_DB_PATH", data.join("aular.db"))
+        .env("AULAR_MEDIA_DIR", data.join("media"))
+        // The backend reads and writes Hermes state (model config, sessions,
+        // memories) in the app's own profile, never the user's ~/.hermes.
+        .env("HERMES_ROOT", crate::runtime::hermes_home())
+        // A local single-machine app: the first run has no account yet, and
+        // there is no operator to mint one. The backend still binds loopback.
+        .env("AULAR_SIGNUP_MODE", "open")
+        .env("AULAR_CORE_API_URL", format!("http://127.0.0.1:{PORT}"))
         // Both children share one secret, minted by the shell — a shipped app
         // has no ambient environment to inherit these from.
         .env("AULAR_INTERNAL_TOKEN", crate::runtime::internal_token())

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:shipping": "vite build --mode shipping",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri"
