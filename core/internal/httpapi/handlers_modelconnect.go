@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,9 @@ func hermesAgentDir() string {
 }
 
 func hermesPython() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(hermesAgentDir(), "venv", "Scripts", "python.exe")
+	}
 	return filepath.Join(hermesAgentDir(), "venv", "bin", "python3")
 }
 

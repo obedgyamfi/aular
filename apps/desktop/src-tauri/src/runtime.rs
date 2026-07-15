@@ -30,7 +30,32 @@ pub fn data_dir() -> PathBuf {
 fn dirs_config() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .or_else(|| dirs_home().map(|h| h.join(".config")))
+}
+
+/// The user's home, on any OS ($HOME on unix, %USERPROFILE% on Windows).
+fn dirs_home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+/// A plain recursive copy — `cp -a` doesn't exist on Windows, and we don't
+/// need permissions fidelity, just the files.
+fn copy_recursively(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    if from.is_dir() {
+        fs::create_dir_all(to)?;
+        for entry in fs::read_dir(from)? {
+            let entry = entry?;
+            copy_recursively(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    } else {
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(from, to)?;
+    }
+    Ok(())
 }
 
 /// The Hermes profile this app owns — never the user's own ~/.hermes, which
@@ -71,7 +96,7 @@ pub fn prepare_hermes_profile() -> std::io::Result<()> {
 
     // Seed the AULAR integration from the user's Hermes install. (Packaging
     // will bundle these instead — see docs/architecture.md.)
-    if let Some(src) = std::env::var_os("HOME").map(PathBuf::from) {
+    if let Some(src) = dirs_home() {
         for (from, to) in [
             (src.join(".hermes/plugins/aular"), home.join("plugins/aular")),
             (
@@ -81,9 +106,7 @@ pub fn prepare_hermes_profile() -> std::io::Result<()> {
             (src.join(".hermes/config.yaml"), home.join("config.yaml")),
         ] {
             if from.exists() && !to.exists() {
-                let _ = std::process::Command::new("cp")
-                    .args(["-a", &from.to_string_lossy(), &to.to_string_lossy()])
-                    .status();
+                let _ = copy_recursively(&from, &to);
             }
         }
     }
