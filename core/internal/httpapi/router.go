@@ -167,6 +167,13 @@ func (s *Server) Router() http.Handler {
 		r.Route("/settings", func(r chi.Router) {
 			r.Get("/model", s.handleGetModelSettings)
 			r.Put("/model", s.handleUpdateModelSettings)
+			r.Route("/model/connect/codex", func(r chi.Router) {
+				r.Get("/", s.handleCodexConnectStatus)
+				r.Post("/", s.handleCodexConnectStart)
+				r.Get("/status", s.handleCodexStatus)
+				r.Post("/import", s.handleCodexImport)
+				r.Get("/models", s.handleCodexModels)
+			})
 		})
 
 		r.Route("/routines", func(r chi.Router) {
@@ -177,9 +184,12 @@ func (s *Server) Router() http.Handler {
 		})
 
 		r.Get("/schedule/jobs", s.handleListScheduledJobs)
+		r.Get("/analytics/daily", s.handleAnalyticsDaily)
 		r.Get("/usage/summary", s.handleUsageSummary)
+		r.Get("/usage/tokens", s.handleUsageTokens)
 		r.Post("/usage/reset", s.handleUsageReset)
 		r.Get("/memory", s.handleGetMemory)
+		r.Get("/repo/log", s.handleRepoLog)
 
 		r.Post("/media", s.handleUploadMedia)
 	})
