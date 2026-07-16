@@ -124,25 +124,39 @@ fn which(name: &str) -> Result<PathBuf, ()> {
 /// the tool-feed hook, plus an .env that points the gateway back at our own
 /// backend. The .env is authoritative — Hermes reads a profile's .env over the
 /// ambient environment, which is exactly the behaviour we want here.
-pub fn prepare_hermes_profile() -> std::io::Result<()> {
+///
+/// `resources` is the app's bundled `resources/hermes` directory — the copy of
+/// the integration that ships with this build. It wins over a developer's
+/// ~/.hermes: a fresh machine has no ~/.hermes, and that machine is exactly
+/// who the bundle exists for. Without the plugin the gateway has no adapter
+/// port and the app cannot deliver a single turn.
+pub fn prepare_hermes_profile(resources: Option<PathBuf>) -> std::io::Result<()> {
     let home = hermes_home();
     fs::create_dir_all(home.join("plugins"))?;
     fs::create_dir_all(home.join("hooks"))?;
 
-    // Seed the AULAR integration from the user's Hermes install. (Packaging
-    // will bundle these instead — see docs/architecture.md.)
-    if let Some(src) = dirs_home() {
-        for (from, to) in [
-            (src.join(".hermes/plugins/aular"), home.join("plugins/aular")),
-            (
-                src.join(".hermes/hooks/aular-toolfeed"),
-                home.join("hooks/aular-toolfeed"),
-            ),
-            (src.join(".hermes/config.yaml"), home.join("config.yaml")),
-        ] {
-            if from.exists() && !to.exists() {
+    // Both sources mirror the same layout; first hit per item wins.
+    let mut sources: Vec<PathBuf> = Vec::new();
+    if let Some(r) = resources {
+        sources.push(r);
+    }
+    if let Some(h) = dirs_home() {
+        sources.push(h.join(".hermes"));
+    }
+    for rel in ["plugins/aular", "hooks/aular-toolfeed", "config.yaml"] {
+        let to = home.join(rel);
+        if to.exists() {
+            continue;
+        }
+        for src in &sources {
+            let from = src.join(rel);
+            if from.exists() {
                 let _ = copy_recursively(&from, &to);
+                break;
             }
+        }
+        if !to.exists() {
+            log::error!("runtime: could not seed {rel} — no bundled resources and no ~/.hermes");
         }
     }
 

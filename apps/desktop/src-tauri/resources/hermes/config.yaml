@@ -1,0 +1,12 @@
+# The app-owned Hermes profile's starting config. Model and provider blocks
+# are written by the app's model-connect flow; what must exist from the first
+# boot is the AULAR platform plugin — without it the gateway has no adapter
+# port and the app cannot deliver a single turn.
+plugins:
+  enabled:
+    - aular-platform
+  disabled: []
+display:
+  platforms:
+    aular:
+      tool_progress: 'off'

@@ -1,0 +1,9 @@
+name: aular-toolfeed
+description: >
+  Forwards tool invocations from AULAR-platform agent turns to AULAR
+  core-api's /internal/tool-event, feeding the Work register's live
+  session feed. Install by copying this directory to
+  ~/.hermes/hooks/aular-toolfeed/ (see the plugin README).
+events:
+  - agent:start
+  - agent:step

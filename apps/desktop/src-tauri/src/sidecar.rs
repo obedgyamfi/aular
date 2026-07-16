@@ -103,7 +103,11 @@ pub fn on_run_event(app: &AppHandle, event: &RunEvent) {
 /// app has agents that cannot reply, which is the most confusing possible
 /// failure, so a missing Hermes is logged loudly rather than swallowed.
 pub fn spawn_gateway(app: &AppHandle) {
-    if let Err(e) = crate::runtime::prepare_hermes_profile() {
+    let resources = app
+        .path()
+        .resolve("resources/hermes", tauri::path::BaseDirectory::Resource)
+        .ok();
+    if let Err(e) = crate::runtime::prepare_hermes_profile(resources) {
         log::error!("runtime: could not prepare the Hermes profile: {e}");
         return;
     }

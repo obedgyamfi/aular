@@ -1,0 +1,29 @@
+name: aular-platform
+label: AULAR
+kind: platform
+version: 1.0.0
+description: >
+  AULAR gateway platform adapter. Bridges the AULAR web app to the Hermes
+  agent: receives user messages over HTTP from AULAR's core-api and delivers
+  agent replies (and async cron/job pushes) back into the AULAR chat via
+  core-api's internal delivery endpoint. Because AULAR conversations run as
+  sessions on this async-delivery-capable platform, reminders and other
+  time-delayed actions push into the chat when they fire.
+author: AULAR
+optional_env:
+  - name: AULAR_CORE_API_URL
+    description: "Base URL of AULAR core-api (default http://localhost:8080)"
+    prompt: "core-api URL"
+    password: false
+  - name: AULAR_INTERNAL_TOKEN
+    description: "Shared secret for core-api's /internal/deliver endpoint"
+    prompt: "internal token"
+    password: true
+  - name: AULAR_ADAPTER_PORT
+    description: "Port this adapter listens on for inbound messages (default 8643)"
+    prompt: "adapter port"
+    password: false
+  - name: AULAR_ALLOW_ALL_USERS
+    description: "Allow all senders (AULAR is a single-user trusted app: set true)"
+    prompt: "allow all users?"
+    password: false
