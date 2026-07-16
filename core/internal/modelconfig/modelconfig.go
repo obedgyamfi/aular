@@ -73,8 +73,13 @@ func envPath() (string, error)    { return envPathIn("") }
 // Empty means no key needed (e.g. a local Ollama endpoint).
 func KeyEnvForProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "openai", "openai-codex":
+	case "openai":
 		return "OPENAI_API_KEY"
+	case "openai-codex":
+		// Codex authenticates with OAuth tokens in Hermes' auth store, not an
+		// env key — reporting one made the UI wait forever for a key that
+		// will never be set.
+		return ""
 	case "anthropic":
 		return "ANTHROPIC_API_KEY"
 	case "openrouter":
@@ -100,6 +105,11 @@ func ReadFrom(home string) (*Config, error) {
 		return nil, err
 	}
 	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		// First run on a machine with no Hermes config yet — not an error,
+		// just nothing connected. The UI's answer is its onboarding step.
+		return &Config{}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("modelconfig: read config: %w", err)
 	}
@@ -140,18 +150,33 @@ func WriteTo(home string, cfg Config, apiKey string) (bool, error) {
 	if strings.TrimSpace(cfg.Model) == "" || strings.TrimSpace(cfg.Provider) == "" {
 		return false, fmt.Errorf("modelconfig: model and provider are required")
 	}
+	if cfg.KeyEnvVar == "" {
+		cfg.KeyEnvVar = KeyEnvForProvider(cfg.Provider)
+	}
 	path, err := configPathIn(homeOverride(home))
 	if err != nil {
 		return false, err
 	}
 	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		// First model on a fresh profile — the file starts here.
+		data = nil
+		err = nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("modelconfig: read config: %w", err)
 	}
 	lines := strings.Split(string(data), "\n")
 	_, start, end, err := findModelBlock(lines)
 	if err != nil {
-		return false, err
+		// No model block yet (fresh profile) — append one at the end
+		// instead of refusing the user's first model.
+		if !strings.HasSuffix(string(data), "\n") && len(data) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "model:")
+		start = len(lines) - 1
+		end = len(lines)
 	}
 
 	// Build the replacement child lines (2-space indent), keeping only fields
@@ -290,6 +315,10 @@ func upsertEnvIn(home homeOverride, key, value string) error {
 // writeFileAtomic writes via a temp file + rename so a crash can't truncate the
 // user's config.
 func writeFileAtomic(path, content string) error {
+	// A brand-new profile may not even have its directory yet.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	tmp := path + ".aular.tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
 		return err

@@ -22,6 +22,7 @@ pub fn run() {
         // title bar is the app's only menu. Setting one here renders a second
         // menubar inside the window on Linux — two menus, one app.
         .setup(|app| {
+            runtime::enforce_fresh_data();
             let licensed = license::is_licensed();
             log::info!(
                 "aular: starting (engine linked: {}, licensed: {})",
@@ -32,6 +33,7 @@ pub fn run() {
             sidecar::spawn_gateway(app.handle());
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![sidecar::restart_agent_runtime])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 sidecar::shutdown(window.app_handle());

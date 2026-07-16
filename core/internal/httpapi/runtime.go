@@ -159,6 +159,12 @@ func (s *Server) ProvisionRuntime(ctx context.Context, userID string) error {
 // cloning a profile and booting a gateway takes seconds, and login must not
 // block on it.
 func (s *Server) ensureRuntimeAsync(userID string) {
+	// A single-runtime install (the desktop) has no template profile —
+	// every account rides the default gateway, and there is nothing to
+	// provision or retry on each login.
+	if !s.supervisor.TemplateAvailable() {
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()

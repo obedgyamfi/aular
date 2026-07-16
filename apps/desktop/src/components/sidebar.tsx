@@ -1,50 +1,112 @@
-import { createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
+import autoAnimate from "@formkit/auto-animate";
 import { Icon } from "@opencode-ai/ui/icon";
 
-import { NewAgentDialog } from "~/components/new-agent-dialog";
+import { AgentListItem } from "~/components/agent-list-item";
+import { AddAgentModal } from "~/components/add-agent-modal";
 import { actions, state } from "~/lib/store";
-import type { Agent } from "~/lib/types";
 
-/** The org, as a list. 260px column, opencode's metrics. */
+/**
+ * The org, as a list — ported from the prototype's Sidebar.
+ *
+ * The AULAR system agent is pinned at the top (it is how you build the rest of
+ * the team), staff below, ordered by recent activity like a messenger. A search
+ * box filters by name or role. Hiring sits at the foot as a real button — the
+ * one action that grows the org shouldn't hide behind a 24px "+". (The account
+ * lives in the title bar, beside the window controls.)
+ */
 export function Sidebar() {
-  const [creating, setCreating] = createSignal(false);
+  const [hiring, setHiring] = createSignal(false);
+  const [query, setQuery] = createSignal("");
 
-  const staff = () => state.agents.filter((a) => a.role !== "system");
-  const system = () => state.agents.filter((a) => a.role === "system");
+  const matches = (name: string, role: string) => {
+    const q = query().trim().toLowerCase();
+    if (!q) return true;
+    return name.toLowerCase().includes(q) || role.toLowerCase().includes(q);
+  };
+
+  const system = createMemo(() =>
+    state.agents.filter((a) => a.role === "system" && matches(a.name, a.role)),
+  );
+
+  // Staff, most recently active first — the messenger ordering.
+  const staff = createMemo(() =>
+    state.agents
+      .filter((a) => a.role !== "system" && matches(a.name, a.role))
+      .slice()
+      .sort((a, b) => {
+        const at = state.preview[a.id]?.at ?? a.updated_at ?? "";
+        const bt = state.preview[b.id]?.at ?? b.updated_at ?? "";
+        return bt.localeCompare(at);
+      }),
+  );
+
   const capped = () => {
     const max = state.health?.max_agents ?? 0;
-    return max > 0 && staff().length >= max;
+    return max > 0 && state.agents.filter((a) => a.role !== "system").length >= max;
   };
 
   return (
-    <aside class="flex w-[260px] min-w-0 shrink-0 flex-col overflow-hidden border-r border-v2-border-border-muted bg-v2-background-bg-base">
-      <div class="flex h-9 shrink-0 items-center justify-between pl-3 pr-2">
+    <aside class="flex w-[270px] min-w-0 shrink-0 flex-col overflow-hidden border-r border-v2-border-border-muted bg-v2-background-bg-base">
+      <div class="flex h-9 shrink-0 items-center pl-3 pr-2">
         <span class="text-[11px] font-medium tracking-[0.08em] text-v2-text-text-muted">
           AGENTS
         </span>
-        <button
-          type="button"
-          aria-label="New agent"
-          disabled={capped()}
-          onClick={() => setCreating(true)}
-          class="flex size-6 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base disabled:opacity-30"
-        >
-          <Icon name="plus-small" size="small" />
-        </button>
       </div>
 
-      <div class="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2">
-        <For each={system()}>{(a) => <AgentRow agent={a} />}</For>
+      <div class="shrink-0 px-2 pb-2">
+        <div class="flex items-center gap-1.5 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-01 px-2 py-1 focus-within:border-v2-border-border-focus">
+          <span class="shrink-0 text-v2-icon-icon-muted">
+            <Icon name="magnifying-glass" size="small" />
+          </span>
+          <input
+            value={query()}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            placeholder="Search agents"
+            class="min-w-0 flex-1 bg-transparent py-0.5 text-[12px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
+          />
+        </div>
+      </div>
+
+      <div
+        ref={(el) => autoAnimate(el, { duration: 180, easing: "cubic-bezier(0,0,.2,1)" })}
+        class="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2"
+      >
+        <For each={system()}>
+          {(a) => (
+            <AgentListItem
+              agent={a}
+              active={state.activeAgentId === a.id}
+              onClick={() => void actions.openAgent(a.id)}
+            />
+          )}
+        </For>
+
         <Show when={staff().length}>
-          <div class="px-2 pb-1 pt-3 text-[10px] font-medium tracking-[0.08em] text-v2-text-text-weak">
+          <div class="px-2 pb-1 pt-3 text-[10px] font-medium tracking-[0.08em] text-v2-text-text-faint">
             STAFF
           </div>
         </Show>
-        <For each={staff()}>{(a) => <AgentRow agent={a} />}</For>
+
+        <For each={staff()}>
+          {(a) => (
+            <AgentListItem
+              agent={a}
+              active={state.activeAgentId === a.id}
+              onClick={() => void actions.openAgent(a.id)}
+            />
+          )}
+        </For>
 
         <Show when={!state.agents.length}>
           <p class="px-3 py-10 text-center text-[12px] text-v2-text-text-muted">
             No agents yet
+          </p>
+        </Show>
+
+        <Show when={state.agents.length && !system().length && !staff().length}>
+          <p class="px-3 py-8 text-center text-[11.5px] text-v2-text-text-faint">
+            No agents match “{query()}”
           </p>
         </Show>
       </div>
@@ -55,47 +117,32 @@ export function Sidebar() {
             <span class="shrink-0">
               <Icon name="subagent" size="small" />
             </span>
-            <span class="truncate">{state.health?.max_agents} agent limit reached</span>
+            <span class="truncate">{state.health?.max_agents} agent limit</span>
           </span>
           <span class="text-[11px] leading-relaxed text-v2-text-text-muted">
-            Agents that delegate work to each other, share a roadmap, and run on
-            a schedule are AULAR&nbsp;Pro.
+            Agents that delegate work to each other, share a roadmap, and run on a
+            schedule are AULAR&nbsp;Pro.
           </span>
         </div>
       </Show>
 
-      <Show when={creating()}>
-        <NewAgentDialog onClose={() => setCreating(false)} />
+      {/* The foot of the list is where the list grows. */}
+      <div class="shrink-0 border-t border-v2-border-border-muted p-2">
+        <button
+          type="button"
+          disabled={capped()}
+          title={capped() ? "Agent limit reached" : "Hire an agent"}
+          onClick={() => setHiring(true)}
+          class="flex w-full items-center justify-center gap-1.5 rounded-md bg-v2-background-bg-accent px-3 py-2 text-[12.5px] font-medium text-v2-text-text-inverse transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          <Icon name="plus-small" size="small" />
+          Hire an agent
+        </button>
+      </div>
+
+      <Show when={hiring()}>
+        <AddAgentModal onClose={() => setHiring(false)} />
       </Show>
     </aside>
-  );
-}
-
-function AgentRow(props: { agent: Agent }) {
-  const a = () => props.agent;
-  const active = () => state.activeAgentId === a().id;
-
-  return (
-    <button
-      type="button"
-      onClick={() => void actions.openAgent(a().id)}
-      aria-current={active()}
-      class="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover aria-[current=true]:bg-v2-overlay-simple-overlay-pressed"
-    >
-      <span class="flex size-5 shrink-0 items-center justify-center rounded bg-v2-background-bg-layer-02 text-[10px] font-medium text-v2-text-text-muted">
-        {a().name.slice(0, 1).toUpperCase()}
-      </span>
-      <span class="flex min-w-0 flex-1 flex-col">
-        <span class="truncate text-[12.5px] text-v2-text-text-base">{a().name}</span>
-        <Show when={a().last_message}>
-          <span class="truncate text-[11px] text-v2-text-text-weak">{a().last_message}</span>
-        </Show>
-      </span>
-      <Show when={(a().unread_count ?? 0) > 0}>
-        <span class="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-v2-background-bg-accent px-1 text-[10px] font-medium text-v2-text-text-inverse">
-          {a().unread_count}
-        </span>
-      </Show>
-    </button>
   );
 }

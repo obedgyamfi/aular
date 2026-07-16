@@ -84,6 +84,192 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  /* Settings → Appearance → Reduce motion puts this class on the root. Without
+     this rule the switch flips and nothing happens. */
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Motion.
+     opencode's Tailwind preset ships no keyframes at all — `animate-pulse`,
+     `animate-bounce` and `animate-spin` resolve to `animation-name: none`. Every
+     moving thing in this app (the thinking indicator, the streaming caret, the
+     running-tool pulse) was therefore frozen. These are ours. */
+
+  /* The thinking indicator: dots that rise and fade in sequence. */
+  @keyframes aular-think {
+    0%,
+    70%,
+    100% {
+      opacity: 0.28;
+      transform: translateY(0);
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(-2.5px);
+    }
+  }
+
+  /* A light sweeping across the label while a turn is in flight. The gradient
+     tiles, so it always covers the text — with `no-repeat` the sweep slides off
+     the element and the (deliberately transparent) letters vanish with it. */
+  @keyframes aular-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: 0% 0;
+    }
+  }
+
+  /* The caret at the end of a streaming reply. */
+  @keyframes aular-caret {
+    0%,
+    45% {
+      opacity: 1;
+    }
+    55%,
+    100% {
+      opacity: 0.15;
+    }
+  }
+
+  /* A tool that is still running. */
+  @keyframes aular-breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.82);
+    }
+  }
+
+  /* Chart series. Two fixed slots, validated (dataviz six checks) against the
+     card surface in both schemes: blue = what you feed the org (tokens in,
+     your messages), orange = what the agents produce (tokens out, replies).
+     The theme accent can't do this job — it changes hue between schemes. */
+  :root {
+    --viz-1: #2a78d6;
+    --viz-2: #d95926;
+    /* Commit-graph lanes: the validated categorical order, stepped per scheme. */
+    --graph-1: #2a78d6;
+    --graph-2: #d95926;
+    --graph-3: #1baf7a;
+    --graph-4: #4a3aa7;
+    --graph-5: #e87ba4;
+    --graph-6: #eda100;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-scheme="light"]) {
+      --viz-1: #3987e5;
+      --graph-1: #3987e5;
+      --graph-3: #199e70;
+      --graph-4: #9085e9;
+      --graph-5: #d55181;
+      --graph-6: #c98500;
+    }
+  }
+  :root[data-scheme="dark"] {
+    --viz-1: #3987e5;
+    --graph-1: #3987e5;
+    --graph-3: #199e70;
+    --graph-4: #9085e9;
+    --graph-5: #d55181;
+    --graph-6: #c98500;
+  }
+
+  /* Entrances. Two verbs, used everywhere so the app moves as one thing:
+     `rise` for content that arrives (messages, panels), `pop` for surfaces
+     that open (menus, modals, cards). Both are short and settle fast —
+     motion should feel like the app responding, never performing. */
+  @keyframes aular-rise {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes aular-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes aular-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  /* Standard decelerate (Material's 0,0,.2,1): entrances start fast and
+     settle — never ease-in, never past 300ms, transform+opacity only. */
+  .aular-rise {
+    animation: aular-rise 0.2s cubic-bezier(0, 0, 0.2, 1) both;
+  }
+  .aular-pop {
+    animation: aular-pop 0.15s cubic-bezier(0, 0, 0.2, 1) both;
+  }
+  .aular-fade {
+    animation: aular-fade 0.15s cubic-bezier(0, 0, 0.2, 1) both;
+  }
+
+  /* Pressing feedback: the independent `scale` property composes with any
+     transform a button already carries (translate-centered pills survive).
+     The transition lives on the base state so the RELEASE eases too —
+     declaring it only under :active made letting go snap, which read as
+     flicker. */
+  button {
+    transition-property: scale;
+    transition-duration: 0.1s;
+    transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  button:active:not(:disabled) {
+    scale: 0.97;
+  }
+
+  .aular-think {
+    animation: aular-think 1.25s ease-in-out infinite;
+  }
+  .aular-caret {
+    animation: aular-caret 1s steps(1, end) infinite;
+  }
+  .aular-breathe {
+    animation: aular-breathe 1.4s ease-in-out infinite;
+  }
+  /* The `background:` *shorthand* carrying var()s gets serialized to empty
+     longhands by the CSS minifier — the gradient silently vanishes and the text,
+     which is transparent by design, disappears with it. Longhand survives. */
+  .aular-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      var(--v2-text-text-faint) 0%,
+      var(--v2-text-text-faint) 35%,
+      var(--v2-text-text-base) 50%,
+      var(--v2-text-text-faint) 65%,
+      var(--v2-text-text-faint) 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: aular-shimmer 1.9s linear infinite;
+  }
 }
 
 /* Agent output. Kept close to the prototype's reading rhythm, on opencode's

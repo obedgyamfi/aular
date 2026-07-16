@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/obedgyamfi/aular/core/engine"
 	"github.com/obedgyamfi/aular/core/internal/auth"
 )
 
@@ -91,4 +92,14 @@ func (s *Server) ctxUserID(ctx context.Context) string {
 		return id
 	}
 	return s.cfg.UserID
+}
+
+// withEngineUser re-stamps the authenticated caller with the engine package's
+// own context key before a request crosses the module boundary — the engine
+// cannot import internal/auth, so engine.UserID is the contract it reads.
+func (s *Server) withEngineUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := engine.WithUserID(r.Context(), s.ctxUserID(r.Context()))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

@@ -167,6 +167,14 @@ func portFree(p int) bool {
 // cloneTemplate copies the scrubbed template profile (which carries the aular
 // plugin + toolfeed hook) into a new profile directory. Hermes profiles are
 // plain directories, so a copy is the whole operation.
+// TemplateAvailable reports whether this install can provision per-user
+// profiles at all. The desktop app never makes a template: every account
+// rides the default gateway, and provisioning has nothing to do.
+func (s *Supervisor) TemplateAvailable() bool {
+	_, err := os.Stat(hermespaths.ProfileDir(TemplateProfile))
+	return err == nil
+}
+
 func (s *Supervisor) cloneTemplate(profile string) error {
 	src := hermespaths.ProfileDir(TemplateProfile)
 	dst := hermespaths.ProfileDir(profile)

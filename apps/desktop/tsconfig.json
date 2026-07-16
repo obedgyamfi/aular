@@ -5,7 +5,9 @@
     "moduleResolution": "bundler",
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
@@ -14,7 +16,19 @@
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": { "~/*": ["./src/*"] }
+    "paths": {
+      "~/*": [
+        "./src/*"
+      ],
+      "@dicebear/core": [
+        "../../node_modules/@dicebear/core/lib/index.d.ts"
+      ],
+      "@dicebear/collection": [
+        "../../node_modules/@dicebear/collection/lib/index.d.ts"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/obedgyamfi/aular/core/internal/conversations"
 	"github.com/obedgyamfi/aular/core/internal/infra/aularadapter"
 	"github.com/obedgyamfi/aular/core/internal/infra/config"
+	"github.com/obedgyamfi/aular/core/internal/infra/hermesboot"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermescron"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermesmemory"
 	"github.com/obedgyamfi/aular/core/internal/infra/hermesproc"
@@ -59,6 +60,7 @@ type Server struct {
 	hermesCron        *hermescron.Client
 	hermesMemory      *hermesmemory.Client
 	hermesState       *hermesstate.Client
+	bootInstaller     hermesboot.Installer
 
 	// Tracks agent-spec message ids already turned into agents, so a streamed
 	// build reply (seen across deliver + finalizing edit) creates only once.
@@ -167,6 +169,13 @@ func (s *Server) Router() http.Handler {
 		r.Route("/settings", func(r chi.Router) {
 			r.Get("/model", s.handleGetModelSettings)
 			r.Put("/model", s.handleUpdateModelSettings)
+			r.Route("/model/connect/codex", func(r chi.Router) {
+				r.Get("/", s.handleCodexConnectStatus)
+				r.Post("/", s.handleCodexConnectStart)
+				r.Get("/status", s.handleCodexStatus)
+				r.Post("/import", s.handleCodexImport)
+				r.Get("/models", s.handleCodexModels)
+			})
 		})
 
 		r.Route("/routines", func(r chi.Router) {
@@ -176,10 +185,32 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/{id}", s.handleDeleteRoutine)
 		})
 
+		r.Get("/runtime/status", s.handleRuntimeStatus)
+		r.Post("/runtime/install", s.handleRuntimeInstall)
+
 		r.Get("/schedule/jobs", s.handleListScheduledJobs)
+		r.Get("/analytics/daily", s.handleAnalyticsDaily)
 		r.Get("/usage/summary", s.handleUsageSummary)
+		r.Get("/usage/tokens", s.handleUsageTokens)
 		r.Post("/usage/reset", s.handleUsageReset)
 		r.Get("/memory", s.handleGetMemory)
+		r.Get("/repo/log", s.handleRepoLog)
+
+		// The engine's own surfaces (tasks, briefs), if this build has one.
+		// Without an org there are no tasks: reads answer with the empty
+		// truth, actions with 404 — the UI hides these behind /healthz
+		// capabilities either way.
+		if rp, ok := s.engine.(engine.RouteProvider); ok {
+			for prefix, h := range rp.APIRoutes() {
+				r.Mount(prefix, s.withEngineUser(h))
+			}
+		} else {
+			for _, prefix := range []string{"/tasks", "/briefs"} {
+				r.Get(prefix, func(w http.ResponseWriter, _ *http.Request) {
+					writeJSON(w, http.StatusOK, []any{})
+				})
+			}
+		}
 
 		r.Post("/media", s.handleUploadMedia)
 	})

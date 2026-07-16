@@ -1,13 +1,21 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 
+import { AddAgentModal } from "~/components/add-agent-modal";
+import { AgentProfilePage } from "~/components/agent-profile";
 import { AuthScreen } from "~/components/auth-screen";
+import { CalendarPanel } from "~/components/calendar-panel";
 import { ChatPane } from "~/components/chat-pane";
-import { WorkPanel } from "~/components/work-panel";
+import { CommandPalette } from "~/components/command-palette";
+import { ConfirmHost } from "~/components/confirm";
+import { Home } from "~/components/home";
 import { OrgPanel } from "~/components/org-panel";
 import { Rail } from "~/components/rail";
+import { SettingsPanel } from "~/components/settings-panel";
 import { Sidebar } from "~/components/sidebar";
 import { TitleBar } from "~/components/titlebar";
+import { WorkBoard } from "~/components/work-board";
 import { api } from "~/lib/api";
+import { startNotifications } from "~/lib/notify";
 import { actions, state } from "~/lib/store";
 import { onSidebarToggle, sidebarOpen } from "~/lib/window";
 
@@ -20,6 +28,8 @@ import { onSidebarToggle, sidebarOpen } from "~/lib/window";
  */
 export function App() {
   const [ready, setReady] = createSignal(false);
+  const [palette, setPalette] = createSignal(false);
+  const [hiring, setHiring] = createSignal(false);
   const [showSidebar, setShowSidebar] = createSignal(sidebarOpen.value);
   onSidebarToggle(() => setShowSidebar(sidebarOpen.value));
 
@@ -35,20 +45,43 @@ export function App() {
     }
   });
 
+  onMount(() => onCleanup(startNotifications()));
+
+  // ⌘K / Ctrl+K anywhere, including from inside the composer.
+  const onKeyDown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (state.user) setPalette((p) => !p);
+    }
+  };
+  document.addEventListener("keydown", onKeyDown);
+  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
+
   const onAuthed = async (user: Parameters<typeof actions.setUser>[0]) => {
     actions.setUser(user);
     await actions.load();
   };
 
+  /** The sidebar is the chat list; the full-width registers don't want it. */
+  const withSidebar = () => state.register === "chat" && showSidebar();
+
+  const profileAgent = () =>
+    state.profileAgentId
+      ? state.agents.find((a) => a.id === state.profileAgentId)
+      : undefined;
+
   return (
     <div class="relative flex h-full min-h-0 min-w-0 flex-col bg-v2-background-bg-deep">
-      <TitleBar engine={state.health?.engine} />
+      <TitleBar
+        engine={state.health?.engine}
+        onSearch={state.user ? () => setPalette(true) : undefined}
+      />
 
       <main class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <Show when={ready()} fallback={<div class="flex-1 bg-v2-background-bg-base" />}>
           <Show when={state.user} fallback={<AuthScreen onAuthed={onAuthed} />}>
             <Rail />
-            <Show when={state.register !== "org" && showSidebar()}>
+            <Show when={withSidebar()}>
               <Sidebar />
             </Show>
 
@@ -57,19 +90,46 @@ export function App() {
                 behavior, and the reason registers feel instant. */}
             <div
               class="flex min-h-0 min-w-0 flex-1"
-              classList={{ hidden: state.register !== "chat" }}
+              classList={{
+                hidden: state.register !== "chat" || !!state.profileAgentId,
+              }}
             >
               <ChatPane />
             </div>
+            <Show when={profileAgent()}>
+              {(a) => (<div class="aular-rise flex min-h-0 min-w-0 flex-1"><AgentProfilePage agent={a()} /></div>)}
+            </Show>
+            <Show when={state.register === "home"}>
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><Home /></div>
+            </Show>
             <Show when={state.register === "work"}>
-              <WorkPanel />
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><WorkBoard /></div>
             </Show>
             <Show when={state.register === "org"}>
-              <OrgPanel />
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><OrgPanel /></div>
+            </Show>
+            <Show when={state.register === "calendar"}>
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><CalendarPanel /></div>
+            </Show>
+            <Show when={state.register === "settings"}>
+              <div class="aular-rise flex min-h-0 min-w-0 flex-1"><SettingsPanel /></div>
+            </Show>
+
+            <Show when={palette()}>
+              <CommandPalette
+                onClose={() => setPalette(false)}
+                onHire={() => setHiring(true)}
+              />
+            </Show>
+            <Show when={hiring()}>
+              <AddAgentModal onClose={() => setHiring(false)} />
             </Show>
           </Show>
         </Show>
       </main>
+
+      {/* One host for every "are you sure?" in the app. */}
+      <ConfirmHost />
     </div>
   );
 }
