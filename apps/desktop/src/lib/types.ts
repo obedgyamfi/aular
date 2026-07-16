@@ -339,6 +339,8 @@ export interface Brief {
 /** The agent runtime, as onboarding sees it (GET /api/v1/runtime/status). */
 export interface RuntimeStatus {
   installed: boolean;
+  /** The adapter port answers — installed-but-down is a different problem. */
+  gateway_up?: boolean;
   runtime?: { hermes_bin: string; python?: string; source: string };
   install: {
     stage: "" | "idle" | "uv" | "python" | "hermes" | "verify" | "done" | "error";

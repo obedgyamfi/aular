@@ -1,13 +1,12 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onMount, Show } from "solid-js";
+import type { JSX } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
 import { AddAgentModal } from "~/components/add-agent-modal";
 import { Mark } from "~/components/logo";
 import { Modal } from "~/components/modal";
 import { ModelSettings } from "~/components/model-settings";
-import { api } from "~/lib/api";
 import { actions, state } from "~/lib/store";
-import type { RuntimeStatus } from "~/lib/types";
 
 /**
  * First run — ported from the prototype's Onboarding.
@@ -21,48 +20,43 @@ export function Onboarding() {
   const [modelOpen, setModelOpen] = createSignal(false);
   const [hireOpen, setHireOpen] = createSignal(false);
 
-  // The agent runtime. On a machine that already runs Hermes this resolves
-  // to installed on the first poll and the step never renders.
-  const [runtime, setRuntime] = createSignal<RuntimeStatus | null>(null);
-  let pollTimer: ReturnType<typeof setTimeout> | undefined;
-  let sawInstalling = false; // only a watched install earns a gateway restart
-  const refreshRuntime = async () => {
-    try {
-      const st = await api.runtimeStatus();
-      setRuntime(st);
-      const stage = st.install.stage;
-      if (!st.installed && (stage === "uv" || stage === "python" || stage === "hermes" || stage === "verify")) {
-        sawInstalling = true;
-        pollTimer = setTimeout(() => void refreshRuntime(), 2500);
-      } else if (st.installed && stage === "done" && sawInstalling) {
-        // Fresh install — bring the gateway up without an app relaunch.
-        sawInstalling = false;
-        void restartGateway();
-      }
-    } catch {
-      // An older backend without the endpoint: treat as installed (it is —
-      // that backend only exists where Hermes already runs).
-      setRuntime({ installed: true, install: { stage: "idle" } });
-    }
-  };
-  onMount(() => void refreshRuntime());
-  onCleanup(() => clearTimeout(pollTimer));
+  // The agent runtime, read from the store — Onboarding renders in two
+  // places (Home's empty state, the chat pane's), and per-instance install
+  // state once left the visible copy idle while the other installed.
+  const runtime = () => state.runtime;
+  onMount(() => void actions.refreshRuntime());
 
   const needsRuntime = () => runtime() !== null && !runtime()!.installed;
   const installing = () => {
     const stage = runtime()?.install.stage;
     return stage === "uv" || stage === "python" || stage === "hermes" || stage === "verify";
   };
-  const startInstall = async () => {
-    await api.runtimeInstall().catch(() => undefined);
-    void refreshRuntime();
+
+  // A progress number the eye can trust: each stage owns a band, and within
+  // it we creep asymptotically — pip's minutes read as motion, never as a
+  // hang, and the bar never moves backward.
+  const BANDS: Record<string, [number, number]> = {
+    uv: [2, 12], python: [12, 30], hermes: [30, 92], verify: [92, 98],
+  };
+  const [stageAt, setStageAt] = createSignal({ stage: "", at: 0 });
+  createEffect(() => {
+    const stage = runtime()?.install.stage ?? "";
+    if (stage !== stageAt().stage) setStageAt({ stage, at: Date.now() });
+  });
+  const pct = () => {
+    const stage = runtime()?.install.stage ?? "";
+    if (stage === "done") return 100;
+    const band = BANDS[stage];
+    if (!band) return 0;
+    const elapsed = (Date.now() - stageAt().at) / 1000;
+    return band[0] + (band[1] - band[0]) * (1 - Math.exp(-elapsed / 60));
   };
 
   const model = () => state.model;
   /** Ready = the provider needs no key (local Ollama) or a key is set. */
   const modelReady = () => {
     const m = model();
-    if (!m) return false;
+    if (!m || !m.model || !m.provider) return false;
     return !m.key_env_var || m.key_set;
   };
 
@@ -92,16 +86,21 @@ export function Onboarding() {
               highlight={!installing()}
               title="Install the agent runtime"
               body={
-                installing()
-                  ? stageLabel(runtime()!.install.stage) +
-                    (runtime()!.install.detail ? ` — ${runtime()!.install.detail}` : "")
-                  : runtime()?.install.stage === "error"
-                    ? `Install failed: ${runtime()?.install.error ?? "unknown error"}`
-                    : "This machine doesn't run agents yet. One click installs the Hermes runtime into the app's own folder — nothing else on your system is touched."
+                installing() ? (
+                  <InstallProgress
+                    label={stageLabel(runtime()!.install.stage)}
+                    pct={pct()}
+                    detail={runtime()!.install.detail ?? ""}
+                  />
+                ) : runtime()?.install.stage === "error" ? (
+                  `Install failed: ${runtime()?.install.error ?? "unknown error"}`
+                ) : (
+                  "This machine doesn't run agents yet. One click installs the Hermes runtime into the app's own folder — nothing else on your system is touched."
+                )
               }
               action={installing() ? "Installing…" : runtime()?.install.stage === "error" ? "Retry" : "Install"}
               onAction={() => {
-                if (!installing()) void startInstall();
+                if (!installing()) void actions.installRuntime();
               }}
             />
           </Show>
@@ -158,6 +157,33 @@ export function Onboarding() {
   );
 }
 
+/**
+ * The install, at a fixed height. Every line reserves its space whether or
+ * not it has content, so streamed pip output can't reshape the card — a
+ * progress area that jumps around reads as broken, not busy.
+ */
+function InstallProgress(props: { label: string; pct: number; detail: string }) {
+  return (
+    <span class="flex flex-col gap-1.5 pt-0.5">
+      <span class="flex h-4 items-baseline justify-between gap-2">
+        <span class="text-[11.5px] text-v2-text-text-muted">{props.label}…</span>
+        <span class="text-[10.5px] tabular-nums text-v2-text-text-faint">
+          {Math.round(props.pct)}%
+        </span>
+      </span>
+      <span class="block h-1 overflow-hidden rounded-full bg-v2-background-bg-layer-03">
+        <span
+          class="block h-full rounded-full bg-v2-background-bg-accent transition-[width] duration-700 ease-out"
+          style={{ width: `${props.pct}%` }}
+        />
+      </span>
+      <span class="block h-4 truncate font-mono text-[10px] leading-4 text-v2-text-text-faint">
+        {props.detail}
+      </span>
+    </span>
+  );
+}
+
 function stageLabel(stage: string): string {
   switch (stage) {
     case "uv": return "Preparing the installer";
@@ -168,23 +194,10 @@ function stageLabel(stage: string): string {
   }
 }
 
-/**
- * Start (or restart) the gateway after a managed install. Packaged app only —
- * in the dev browser there is no Tauri and the dev stack runs its own gateway.
- */
-async function restartGateway(): Promise<void> {
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("restart_agent_runtime");
-  } catch {
-    // Dev browser — nothing to restart.
-  }
-}
-
 function Step(props: {
   index: number;
   title: string;
-  body: string;
+  body: string | JSX.Element;
   action: string;
   onAction: () => void;
   done?: boolean;

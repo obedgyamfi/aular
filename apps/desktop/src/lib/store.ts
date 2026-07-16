@@ -10,6 +10,7 @@ import type {
   Message,
   ModelSettings,
   RealtimeEvent,
+  RuntimeStatus,
   Task,
   ToolCall,
 } from "./types";
@@ -63,6 +64,7 @@ interface State {
   settingsSection: SettingsSection;
   user: AuthUser | null;
   health: Health | null;
+  runtime: RuntimeStatus | null;
   model: ModelSettings | null;
 
   agents: Agent[];
@@ -112,6 +114,7 @@ const [state, set] = createStore<State>({
   settingsSection: "general",
   user: null,
   health: null,
+  runtime: null,
   model: null,
   agents: [],
   activeAgentId: null,
@@ -265,6 +268,9 @@ export function onAgentReply(fn: ReplyListener): () => void {
   return () => replyListeners.delete(fn);
 }
 
+let runtimePollTimer: ReturnType<typeof setTimeout> | undefined;
+let runtimeSawInstalling = false;
+
 export const actions = {
   setUser(user: AuthUser | null) {
     set("user", user);
@@ -352,6 +358,7 @@ export const actions = {
 
     stopRealtime?.();
     stopRealtime = openRealtime(handleEvent);
+    void actions.refreshRuntime();
   },
 
   /** Re-sync after a dropped socket — the prototype's fix for stuck rows. */
@@ -512,6 +519,47 @@ export const actions = {
     const m = await api.getModelSettings().catch(() => null);
     set("model", m);
     return m;
+  },
+
+  /**
+   * The agent runtime's state — ONE poll loop for the whole app. Onboarding
+   * renders in two places (Home's empty state and the chat pane's); when
+   * each held its own install state, clicking Install in one left the other
+   * showing an idle card while the install ran invisibly.
+   */
+  async refreshRuntime() {
+    clearTimeout(runtimePollTimer);
+    try {
+      const st = await api.runtimeStatus();
+      set("runtime", st);
+      const stage = st.install.stage;
+      const installing =
+        stage === "uv" || stage === "python" || stage === "hermes" || stage === "verify";
+      if (!st.installed && installing) {
+        runtimeSawInstalling = true;
+        runtimePollTimer = setTimeout(() => void actions.refreshRuntime(), 2500);
+      } else if (st.installed && stage === "done" && runtimeSawInstalling) {
+        // A watched install just finished — bring the gateway up without an
+        // app relaunch. Packaged app only; the dev browser has no Tauri.
+        runtimeSawInstalling = false;
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("restart_agent_runtime");
+        } catch {
+          /* dev browser */
+        }
+      }
+    } catch {
+      // An older backend without the endpoint: treat as installed (it is —
+      // that backend only exists where Hermes already runs).
+      set("runtime", { installed: true, gateway_up: true, install: { stage: "idle" } });
+    }
+  },
+
+  /** Start (or join) the runtime install, then follow it via the poll loop. */
+  async installRuntime() {
+    await api.runtimeInstall().catch(() => undefined);
+    await actions.refreshRuntime();
   },
 
   /** Save a model choice; partial input merges over what's configured. */

@@ -152,12 +152,16 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 			SystemPrompt:   systemPrompt,
 		}); err != nil {
 			log.Printf("httpapi: aular adapter deliver failed: %v", err)
-			// Surface the failure into the chat so it isn't silently dropped.
+			// Surface the failure into the chat so it isn't silently dropped —
+			// in words about what it means, not the dial error (the log keeps
+			// that). This is the first thing a broken install actually shows.
 			if m, e := s.messagesRepo.CreateMessage(bg, &messages.Message{
 				ConversationID: conversationID,
 				SenderType:     "system",
-				Content:        "agent unavailable: " + err.Error(),
-				ContentFormat:  "text",
+				Content: "⚠ This message couldn't reach the agent runtime — it doesn't " +
+					"seem to be running. Restarting AULAR usually brings it back; if " +
+					"not, check Settings → Model that a runtime is installed.",
+				ContentFormat: "text",
 			}); e == nil {
 				s.hub.Broadcast(realtime.Event{Type: "message.created", ConversationID: conversationID, Data: m, UserID: convo.UserID})
 			}

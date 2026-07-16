@@ -191,6 +191,16 @@ function CodexConnect() {
   onCleanup(() => clearInterval(poll));
 
   const alreadyHere = () => !!have()?.logged_in || !!have()?.cli_tokens;
+  /** Codex is the live provider — the card must say so, not offer sign-in. */
+  const connectedNow = () => state.model?.provider === "openai-codex";
+
+  // Opening the card while already connected: load the model picker without
+  // making the user "sign in" to a thing they're signed in to.
+  createEffect(() => {
+    if (connectedNow() && status().stage === "idle" && models().length === 0) {
+      void api.codexModels().then((m) => setModels(m ?? [])).catch(() => {});
+    }
+  });
 
   const finish = async () => {
     await actions.refreshModel();
@@ -258,8 +268,46 @@ function CodexConnect() {
 
   return (
     <div class="flex flex-col gap-3 rounded-lg border border-v2-border-border-muted bg-v2-background-bg-layer-01 p-4">
+      {/* 0. Codex is already the live provider — say so; no sign-in button. */}
+      <Show when={status().stage === "idle" && connectedNow()}>
+        <p class="text-[12px] font-medium text-v2-state-fg-success">
+          Connected — your agents run on your ChatGPT subscription
+          {state.model?.model ? ` (${state.model.model})` : ""}.
+        </p>
+        <Show when={models().length}>
+          <p class="text-[11px] text-v2-text-text-muted">Switch the model they think with:</p>
+          <div class="flex flex-wrap gap-1.5">
+            <For each={models()}>
+              {(m) => (
+                <button
+                  type="button"
+                  onClick={() => void pickModel(m)}
+                  class="rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] transition-colors"
+                  classList={{
+                    "border-v2-border-border-focus bg-v2-overlay-simple-overlay-pressed text-v2-text-text-base":
+                      state.model?.model === m,
+                    "border-v2-border-border-muted text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover":
+                      state.model?.model !== m,
+                  }}
+                >
+                  {m}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+        <button
+          type="button"
+          disabled={busy()}
+          onClick={() => void signIn()}
+          class="w-fit rounded-md px-2 py-1.5 text-[11.5px] font-medium text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+        >
+          Sign in with a different account
+        </button>
+      </Show>
+
       {/* 1. Already signed in on this machine → one click, no OAuth. */}
-      <Show when={status().stage === "idle" && alreadyHere()}>
+      <Show when={status().stage === "idle" && alreadyHere() && !connectedNow()}>
         <p class="text-[11.5px] leading-relaxed text-v2-text-text-muted">
           {have()?.logged_in
             ? "This machine is already signed in to ChatGPT (Codex). Use it — no sign-in needed."
@@ -286,7 +334,7 @@ function CodexConnect() {
       </Show>
 
       {/* 2. Nothing here yet → the real device-code flow. */}
-      <Show when={status().stage === "idle" && !alreadyHere() && !have.loading}>
+      <Show when={status().stage === "idle" && !alreadyHere() && !connectedNow() && !have.loading}>
         <p class="text-[11.5px] leading-relaxed text-v2-text-text-muted">
           We'll open OpenAI's sign-in page and give you a code to enter. Same
           login the Codex CLI uses — your subscription, your account, and the
