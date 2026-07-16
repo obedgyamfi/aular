@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -99,7 +100,7 @@ func (s *Server) hermesPy(ctx context.Context, script string) *exec.Cmd {
 	full := "import sys\nsys.path.insert(0, " + quoted(hermesAgentDir()) + ")\n" + script
 	cmd := exec.Command(s.hermesPython(), "-u", "-c", full)
 	hermesboot.HideConsole(cmd)
-	cmd.Env = append(os.Environ(), "HERMES_HOME="+s.userHome(ctx))
+	cmd.Env = hermesboot.PythonEnv("HERMES_HOME=" + s.userHome(ctx))
 	return cmd
 }
 
@@ -273,6 +274,8 @@ print("HERMES_CONNECT_OK", flush=True)
 			sess.Stage = "error"
 			// The process's own words beat "exit status 1" every time.
 			sess.Error = explainCodexFailure(tail, waitErr)
+			log.Printf("modelconnect: codex sign-in failed (%v); output tail: %s",
+				waitErr, strings.Join(tail, " | "))
 		}
 		sess.mu.Unlock()
 	}()

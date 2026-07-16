@@ -45,6 +45,24 @@ type Runtime struct {
 	Source    string `json:"source"` // hermes_root | home | path | managed
 }
 
+// PythonEnv is the process environment with the machine's own Python
+// configuration scrubbed out. A venv's interpreter that inherits a global
+// PYTHONHOME/PYTHONPATH dies at init with "Fatal Python error … <no Python
+// frame>" — before it can even say why. Every child that is (or spawns)
+// Python gets this environment.
+func PythonEnv(extra ...string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extra))
+	for _, kv := range os.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		switch strings.ToUpper(key) {
+		case "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONUSERBASE", "PYTHONEXECUTABLE":
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, extra...)
+}
+
 // venvBin resolves an executable inside a venv, on any OS.
 func venvBin(venv, name string) string {
 	if runtime.GOOS == "windows" {
@@ -176,6 +194,7 @@ func (i *Installer) install(ctx context.Context, dataDir string) error {
 
 	i.set("verify", "")
 	verify := exec.CommandContext(ctx, venvBin(venv, "hermes"), "--version")
+	verify.Env = PythonEnv()
 	HideConsole(verify)
 	out, err := verify.CombinedOutput()
 	if err != nil {
@@ -188,6 +207,7 @@ func (i *Installer) install(ctx context.Context, dataDir string) error {
 // progress detail — a long pip install with a frozen label reads as a hang.
 func (i *Installer) run(ctx context.Context, bin string, args ...string) error {
 	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = PythonEnv()
 	HideConsole(cmd)
 	var tail bytes.Buffer
 	cmd.Stdout = &progressWriter{i: i, tail: &tail}

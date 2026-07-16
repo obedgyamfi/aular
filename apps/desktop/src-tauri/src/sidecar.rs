@@ -133,6 +133,12 @@ pub fn spawn_gateway(app: &AppHandle) {
     let mut cmd = std::process::Command::new(&hermes);
     cmd.args(["gateway", "run"])
         .env("HERMES_HOME", &home)
+        // A machine's global Python config must never reach the venv's
+        // interpreter — an inherited PYTHONHOME kills it at init.
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH")
+        .env_remove("PYTHONSTARTUP")
+        .env_remove("PYTHONUSERBASE")
         .stdout(std::process::Stdio::from(out));
     if let Some(e) = errs {
         cmd.stderr(std::process::Stdio::from(e));
