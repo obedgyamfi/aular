@@ -45,17 +45,20 @@ type Runtime struct {
 	Source    string `json:"source"` // hermes_root | home | path | managed
 }
 
-// PythonEnv is the process environment with the machine's own Python
-// configuration scrubbed out. A venv's interpreter that inherits a global
-// PYTHONHOME/PYTHONPATH dies at init with "Fatal Python error … <no Python
-// frame>" — before it can even say why. Every child that is (or spawns)
-// Python gets this environment.
+// PythonEnv is the process environment with everything scrubbed that would
+// poison a child Python. The AppImage runtime is the proven offender: it
+// exports PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH pointing into its own mount
+// for EVERY AppImage, and a venv interpreter inheriting that dies at init
+// with "Fatal Python error … <no Python frame>" — before it can say why.
+// Our children (uv, python, hermes) are self-contained and want none of the
+// host app's libraries. Every child that is (or spawns) Python gets this.
 func PythonEnv(extra ...string) []string {
 	env := make([]string, 0, len(os.Environ())+len(extra))
 	for _, kv := range os.Environ() {
 		key, _, _ := strings.Cut(kv, "=")
 		switch strings.ToUpper(key) {
-		case "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONUSERBASE", "PYTHONEXECUTABLE":
+		case "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONUSERBASE",
+			"PYTHONEXECUTABLE", "LD_LIBRARY_PATH", "LD_PRELOAD":
 			continue
 		}
 		env = append(env, kv)

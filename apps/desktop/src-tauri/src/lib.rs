@@ -22,6 +22,7 @@ pub fn run() {
         // title bar is the app's only menu. Setting one here renders a second
         // menubar inside the window on Linux — two menus, one app.
         .setup(|app| {
+            runtime::enforce_fresh_data();
             let licensed = license::is_licensed();
             log::info!(
                 "aular: starting (engine linked: {}, licensed: {})",

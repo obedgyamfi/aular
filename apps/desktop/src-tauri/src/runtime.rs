@@ -69,6 +69,41 @@ pub fn hermes_home() -> PathBuf {
     data_dir().join("hermes")
 }
 
+/// Pre-1.0: every new build starts from clean app data.
+///
+/// Stale state from an older build has caused more broken first-runs than
+/// any bug — a profile without the bundled plugin, a database from a schema
+/// three builds back. Until the schema stabilizes and earns real migrations,
+/// a build that doesn't recognize the data rotates it aside (one generation
+/// kept as `aular-desktop.old`) and starts fresh. Called once, before the
+/// backend or gateway see the directory.
+pub fn enforce_fresh_data() {
+    let dir = data_dir();
+    let stamp = dir.join("build-stamp");
+    let current = env!("AULAR_BUILD_ID");
+    let previous = fs::read_to_string(&stamp).unwrap_or_default();
+    if previous.trim() == current {
+        return;
+    }
+    let has_content = fs::read_dir(&dir)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+    if has_content {
+        let old = dir.with_file_name("aular-desktop.old");
+        let _ = fs::remove_dir_all(&old);
+        match fs::rename(&dir, &old) {
+            Ok(()) => log::info!(
+                "runtime: build {current} doesn't know this app data (was {}) — moved to {}",
+                if previous.trim().is_empty() { "unstamped" } else { previous.trim() },
+                old.display()
+            ),
+            Err(e) => log::error!("runtime: could not rotate stale app data: {e}"),
+        }
+    }
+    let _ = fs::create_dir_all(&dir);
+    let _ = fs::write(&stamp, current);
+}
+
 /// The secret the backend and the gateway authenticate to each other with.
 /// Created on first run, then stable.
 pub fn internal_token() -> String {

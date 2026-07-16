@@ -133,12 +133,16 @@ pub fn spawn_gateway(app: &AppHandle) {
     let mut cmd = std::process::Command::new(&hermes);
     cmd.args(["gateway", "run"])
         .env("HERMES_HOME", &home)
-        // A machine's global Python config must never reach the venv's
-        // interpreter — an inherited PYTHONHOME kills it at init.
+        // The AppImage runtime exports PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH
+        // into every child — inherited by a venv interpreter, PYTHONHOME
+        // kills it at init and the bundled libs poison the rest. The gateway
+        // is self-contained; it gets none of the app's environment quirks.
         .env_remove("PYTHONHOME")
         .env_remove("PYTHONPATH")
         .env_remove("PYTHONSTARTUP")
         .env_remove("PYTHONUSERBASE")
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
         .stdout(std::process::Stdio::from(out));
     if let Some(e) = errs {
         cmd.stderr(std::process::Stdio::from(e));
