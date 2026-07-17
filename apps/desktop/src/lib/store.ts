@@ -540,14 +540,9 @@ export const actions = {
         runtimePollTimer = setTimeout(() => void actions.refreshRuntime(), 2500);
       } else if (st.installed && stage === "done" && runtimeSawInstalling) {
         // A watched install just finished — bring the gateway up without an
-        // app relaunch. Packaged app only; the dev browser has no Tauri.
+        // app relaunch.
         runtimeSawInstalling = false;
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("restart_agent_runtime");
-        } catch {
-          /* dev browser */
-        }
+        await actions.restartAgentRuntime();
       }
     } catch {
       // An older backend without the endpoint: treat as installed (it is —
@@ -560,6 +555,22 @@ export const actions = {
   async installRuntime() {
     await api.runtimeInstall().catch(() => undefined);
     await actions.refreshRuntime();
+  },
+
+  /**
+   * Restart the gateway — the process that actually thinks. The gateway
+   * loads credentials and model config at start, so every successful model
+   * connect calls this; without it the user talks to a gateway that booted
+   * before their sign-in existed ("Provider authentication failed").
+   * Packaged app only; the dev browser's stack manages its own gateway.
+   */
+  async restartAgentRuntime() {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("restart_agent_runtime");
+    } catch {
+      /* dev browser */
+    }
   },
 
   /** Save a model choice; partial input merges over what's configured. */

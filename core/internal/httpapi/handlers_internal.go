@@ -357,3 +357,40 @@ func (s *Server) handleInternalDeliver(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "delivered", "message_id": msg.ID})
 }
+
+// GET /internal/home-channel — where Hermes should deliver cron results and
+// cross-platform messages: the owner's conversation with the AULAR system
+// agent. The desktop shell asks right before (re)starting the gateway and
+// writes the answer into the profile's .env, so the user never meets the
+// "/sethome" nudge. The caller is a gateway (or the shell acting for one):
+// a registered runtime resolves to its own user, the default runtime to the
+// machine's first account.
+func (s *Server) handleInternalHomeChannel(w http.ResponseWriter, r *http.Request) {
+	rt, ok := s.runtimeForToken(r.Context(), r.Header.Get("X-Aular-Internal-Token"))
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid internal token")
+		return
+	}
+	var userID string
+	if rt != nil {
+		userID = rt.UserID
+	} else {
+		u, err := s.usersRepo.First(r.Context())
+		if err != nil {
+			writeError(w, http.StatusNotFound, "no accounts yet")
+			return
+		}
+		userID = u.ID
+	}
+	profile, err := s.agentsRepo.GetOrCreateSystemProfileForUser(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "system agent: "+err.Error())
+		return
+	}
+	convo, err := s.findOrCreateConversation(r.Context(), userID, profile.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "home conversation: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"chat_id": convo.ID})
+}

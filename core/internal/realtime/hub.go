@@ -128,9 +128,22 @@ func (h *Hub) unregister(c *client) {
 
 // wsOriginPatterns lists cross-origin hosts allowed to open the socket.
 // Override with AULAR_WS_ORIGINS (comma-separated host patterns).
+//
+// Patterns match the Origin's *host* — bare, no scheme, and no port unless
+// the origin carries one. The packaged window's origin is http://localhost
+// (Linux/macOS webviews) or http://tauri.localhost (Windows WebView2): bare
+// hosts, which "localhost:*" misses. Without the bare entries the upgrade is
+// refused and the app silently loses realtime — replies only surface when a
+// refetch happens to run.
 func wsOriginPatterns() []string {
 	if v := os.Getenv("AULAR_WS_ORIGINS"); v != "" {
 		return strings.Split(v, ",")
 	}
-	return []string{"localhost:*", "127.0.0.1:*"}
+	return []string{
+		"localhost",       // the packaged window (Linux, macOS webviews)
+		"localhost:*",     // the dev server
+		"tauri.localhost", // the packaged window (Windows WebView2)
+		"127.0.0.1",
+		"127.0.0.1:*",
+	}
 }

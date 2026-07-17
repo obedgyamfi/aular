@@ -204,6 +204,9 @@ function CodexConnect() {
 
   const finish = async () => {
     await actions.refreshModel();
+    // The gateway must reload to see the new credentials — a sign-in the
+    // agents can't use yet isn't a sign-in.
+    void actions.restartAgentRuntime();
     setModels((await api.codexModels().catch(() => [])) ?? []);
     setStatus({ stage: "done" });
   };
@@ -474,6 +477,7 @@ function KeyConnect() {
         ...(apiKey().trim() ? { api_key: apiKey().trim() } : {}),
       });
       setApiKey("");
+      void actions.restartAgentRuntime();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {

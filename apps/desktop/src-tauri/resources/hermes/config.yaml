@@ -10,3 +10,13 @@ display:
   platforms:
     aular:
       tool_progress: 'off'
+      streaming: true
+  streaming: true
+# Hermes ships streaming off (it costs an edit call per tick). Without BOTH
+# switches the plugin takes its single-final-message path and replies land
+# whole instead of growing in the chat. The cursor stays empty — the UI
+# renders its own streaming indicator.
+streaming:
+  enabled: true
+  edit_interval: 0.15
+  cursor: ''
