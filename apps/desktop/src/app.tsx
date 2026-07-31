@@ -4,6 +4,7 @@ import { AddAgentModal } from "~/components/add-agent-modal";
 import { AgentProfileModal } from "~/components/agent-profile-modal";
 import { AuthScreen } from "~/components/auth-screen";
 import { Backdrop } from "~/components/backdrop";
+import { ResizeHandles } from "~/components/resize-handles";
 import { SchedulesPanel } from "~/components/schedules-panel";
 import { ChatPane } from "~/components/chat-pane";
 import { CommandPalette } from "~/components/command-palette";
@@ -23,6 +24,7 @@ import { actions, activeAgent, state } from "~/lib/store";
 import { avatarColor } from "~/components/avatar";
 import { settings } from "~/lib/settings";
 import { accent, hasBackdrop, setAccent } from "~/theme/theme";
+import { nudgeUiScale } from "~/lib/window";
 
 /**
  * The window shell.
@@ -73,8 +75,23 @@ export function App() {
       if (state.user) setPalette((p) => !p);
     }
   };
+  // Ctrl/Cmd +/-/0 resize the UI. These used to live in the app menu; the menu
+  // is gone, so without them there is no way to change the scale at all.
+  const onZoomKeys = (e: KeyboardEvent) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const step =
+      e.key === "=" || e.key === "+" ? "in" : e.key === "-" ? "out" : e.key === "0" ? "reset" : null;
+    if (!step) return;
+    e.preventDefault();
+    nudgeUiScale(step);
+  };
+
   document.addEventListener("keydown", onKeyDown);
-  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
+  document.addEventListener("keydown", onZoomKeys);
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("keydown", onZoomKeys);
+  });
 
   const onAuthed = async (user: Parameters<typeof actions.setUser>[0]) => {
     actions.setUser(user);
@@ -88,6 +105,10 @@ export function App() {
 
   return (
     <div class="relative flex h-full min-h-0 min-w-0 flex-col bg-v2-background-bg-deep">
+      {/* An undecorated window has no frame to grab, so the resize border is
+          ours to draw. Above everything, including dialogs. */}
+      <ResizeHandles />
+
       {/* On an accent theme the whole app sits on the constellation field: the
           panels go translucent (see ACCENT_SURFACES) and this reads through all
           of them, so the colour is the application's rather than one screen's

@@ -13,16 +13,18 @@
     "windows": [
       {
         "title": "AULAR",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
+        "width": 1100,
+        "height": 700,
+        "minWidth": 720,
+        "minHeight": 500,
         "decorations": false,
         "transparent": false,
         "dragDropEnabled": true,
         "theme": null,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {

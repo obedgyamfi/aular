@@ -72,8 +72,14 @@ export function TitleBar(props: { engine?: string }) {
       class="relative z-20 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center bg-[var(--rail)]"
       style={{ height: `${HEIGHT}px`, "padding-left": isMac ? "84px" : "0" }}
     >
+      {/* Every column carries data-tauri-drag-region of its own. Tauri's docs
+          are explicit that the attribute "will only work on the element to
+          which it is directly applied" — putting it only on this grid meant the
+          three child columns covered the entire bar and the window could not be
+          dragged anywhere. Buttons stay clickable precisely because they do NOT
+          carry it. */}
       {/* Left: the working controls, compact. */}
-      <div class="flex items-center gap-0.5 pl-1.5">
+      <div data-tauri-drag-region class="flex items-center gap-0.5 pl-1.5">
         {/* No search button: search is the pill at the top of the sidebar now,
             beside the agents and channels it actually searches. ⌘K still works
             from anywhere. */}
@@ -107,7 +113,10 @@ export function TitleBar(props: { engine?: string }) {
       {/* Right: just the window. The theme switch moved to Settings ▸
           Appearance, and your account and notifications live in the sidebar's
           user panel — one home each. */}
-      <div class="flex items-center justify-end gap-0.5 pr-2">
+      <div
+        data-tauri-drag-region
+        class="flex items-stretch justify-end self-stretch"
+      >
         <Show when={!isMac}>
           <WindowControls />
         </Show>

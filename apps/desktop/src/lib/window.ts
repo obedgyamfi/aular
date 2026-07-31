@@ -40,6 +40,49 @@ export function applyUiScale() {
   }
 }
 
+/**
+ * The eight grab directions Tauri accepts. Declared here rather than imported:
+ * `ResizeDirection` is declared inside @tauri-apps/api/window but not exported.
+ */
+export type ResizeEdge =
+  | "North"
+  | "NorthEast"
+  | "East"
+  | "SouthEast"
+  | "South"
+  | "SouthWest"
+  | "West"
+  | "NorthWest";
+
+/**
+ * Begin a window resize from an edge handle.
+ *
+ * Needs `core:window:allow-start-resize-dragging` in the capability file — the
+ * call rejects silently without it, which looks exactly like a dead handle.
+ */
+export async function startResize(direction: ResizeEdge) {
+  try {
+    await getCurrentWindow()?.startResizeDragging(direction);
+  } catch {
+    // A browser tab during UI development — there is no window to resize.
+  }
+}
+
+/** Nudge the UI scale, and remember it. Ctrl +/-/0, since there is no menu. */
+export function nudgeUiScale(step: "in" | "out" | "reset") {
+  const current = Number(localStorage.getItem("aular-zoom")) || UI_SCALE;
+  const next =
+    step === "reset" ? UI_SCALE : Math.min(1.6, Math.max(0.5, current + (step === "in" ? 0.1 : -0.1)));
+  const rounded = Math.round(next * 100) / 100;
+  localStorage.setItem("aular-zoom", String(rounded));
+  try {
+    void getCurrentWebviewWindow()?.setZoom(rounded);
+  } catch {
+    /* browser */
+  }
+  return rounded;
+}
+
 export const windowControls = {
   minimize: () => void win()?.minimize(),
   toggleMaximize: () => void win()?.toggleMaximize(),
