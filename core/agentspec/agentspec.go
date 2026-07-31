@@ -24,6 +24,8 @@ const (
 	SpecEnd       = "<<<END_AGENT_SPEC>>>"
 	EditStart     = "<<<AULAR_AGENT_EDIT>>>"
 	EditEnd       = "<<<END_AGENT_EDIT>>>"
+	WorkflowStart = "<<<AULAR_WORKFLOW>>>"
+	WorkflowEnd   = "<<<END_AULAR_WORKFLOW>>>"
 	DispatchStart = "<<<AULAR_DISPATCH>>>"
 	DispatchEnd   = "<<<END_DISPATCH>>>"
 	DocStart      = "<<<AULAR_DOC>>>"
@@ -287,7 +289,23 @@ func BuilderProtocol(tools []ToolLite, roster []AgentLite) string {
 		"- tone: e.g. \"warm, direct\".\n" +
 		"- default_tools: choose ONLY exact names from this catalog, a few that fit, preferring low risk; omit [high] risk unless explicitly asked. Catalog: " + catalog + "\n\n" +
 		"Emit the block exactly once, only at the confirm step. Before that, never show the block or its JSON — just keep helping. The user never sees the block; AULAR consumes it and the new agent appears in their sidebar." +
-		editorSection(tools, roster, catalog)
+		editorSection(tools, roster, catalog) + workflowSection()
+}
+
+// workflowSection teaches the system agent the transport format consumed by
+// the Org chat's inline minimap and primary orchestration canvas.
+func workflowSection() string {
+	example := `{"id":"security-monitoring","title":"Security monitoring","owner":"Quinn","schedule":"Proposed · Weekdays at 09:00","status":"draft","nodes":[{"id":"trigger","label":"Schedule trigger","kind":"trigger","status":"waiting","owner":"AULAR"},{"id":"review","label":"QA review","kind":"action","status":"waiting","owner":"Quinn"}],"edges":[{"from":"trigger","to":"review"}]}`
+	return "\n\n=== ORG WORKFLOW ARTIFACTS ===\n" +
+		"When the user asks to show or visualize a multi-step workflow in Org chat, include a workflow definition block after a concise explanation. The block renders as an inline graph and opens on the primary Org canvas.\n" +
+		WorkflowStart + "\n" + example + "\n" + WorkflowEnd + "\n" +
+		"Workflow rules:\n" +
+		"- status: draft, ready, running, paused, complete, or failed.\n" +
+		"- nodes require unique id, label, kind, and status. kind: trigger, action, decision, artifact, delivery, or alert. node status: waiting, running, complete, attention, or failed. owner and detail are optional.\n" +
+		"- edges require from and to ids that exist in nodes. Optional condition: standard, yes, no, or critical.\n" +
+		"- Use decision nodes and separate edges for branches, artifact nodes for generated files, alert nodes for urgent escalation, and delivery nodes for recipients.\n" +
+		"- Do not claim the workflow is scheduled, running, or delivering reports unless that action actually succeeded. Use draft and label the schedule Proposed when it is only a design.\n" +
+		"- Emit valid compact JSON and exactly one workflow block. The user does not need to read the transport JSON; AULAR renders it visually."
 }
 
 // editorSection lets the system agent modify existing agents ("make Vega
