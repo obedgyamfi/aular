@@ -13,6 +13,33 @@ const win = () => {
   }
 };
 
+/**
+ * The app renders at 80% — its natural 100% reads oversized on a desktop.
+ *
+ * This used to be CSS (`#root { zoom: .8; width: 125vw }`) and it shipped a
+ * broken bundle: Chromium and WebKit disagree about what a zoomed element's
+ * containing block is, so the same rule that filled the window in the dev
+ * preview laid out 1.25x oversized under WebKitGTK — right and bottom cropped,
+ * window controls off-screen, titlebar unclickable. No CSS value satisfies both
+ * engines, because one divides the containing block by the zoom and the other
+ * doesn't.
+ *
+ * The webview's OWN page zoom has no such ambiguity: the engine scales and
+ * reflows to the real window. In a plain browser there is no webview, so the
+ * call no-ops and the dev preview simply renders at 100%.
+ */
+const UI_SCALE = 0.8;
+
+export function applyUiScale() {
+  const saved = Number(localStorage.getItem("aular-zoom"));
+  const scale = Number.isFinite(saved) && saved > 0 ? saved : UI_SCALE;
+  try {
+    void getCurrentWebviewWindow()?.setZoom(scale);
+  } catch {
+    // A browser tab during UI development — nothing to scale.
+  }
+}
+
 export const windowControls = {
   minimize: () => void win()?.minimize(),
   toggleMaximize: () => void win()?.toggleMaximize(),
@@ -62,7 +89,7 @@ export function runMenuAction(action: MenuAction) {
     case "view.zoomOut":
     case "view.zoomReset": {
       const w = getCurrentWebviewWindow();
-      const current = Number(localStorage.getItem("aular-zoom") ?? "1");
+      const current = Number(localStorage.getItem("aular-zoom") ?? String(UI_SCALE));
       const next =
         action === "view.zoomReset"
           ? 1

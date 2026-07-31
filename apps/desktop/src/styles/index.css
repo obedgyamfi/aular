@@ -80,17 +80,13 @@
   }
 
   /* The window chrome is ours, so nothing is selectable by default — except
-     the text a person actually reads or types. Copied from their shell.
-
-     The whole app renders at 80% — its natural 100% reads oversized on a
-     desktop. `zoom` shrinks content AND the layout box, so the 125vw/125vh
-     canvas resolves back to exactly one viewport (125 × 0.8 = 100). */
+     the text a person actually reads or types. Copied from their shell. */
   #root {
     user-select: none;
-    zoom: 0.8;
-    width: 125vw;
-    height: 125vh;
+    width: 100%;
+    height: 100%;
   }
+
   input,
   textarea,
   [contenteditable] {
