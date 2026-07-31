@@ -22,6 +22,14 @@ log = "0.4"
 rand = "0.9"
 tauri-plugin-log = "2"
 
+# Remembers where the user left the window. Worth a dependency rather than a
+# hand-rolled save/restore because the details are where this goes wrong: it
+# refuses to record a size while the window is maximized (so "restore down"
+# still means the size you chose, not the whole screen), and it drops a
+# remembered position that no longer lands on a connected monitor.
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-window-state = "2"
+
 [features]
 # REQUIRED for any build that isn't `tauri dev`. Without it the webview loads
 # `devUrl` (the Vite server) instead of the embedded frontend — the app opens
