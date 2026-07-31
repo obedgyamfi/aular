@@ -1,0 +1,61 @@
+{
+  "$schema": "https://opencode.ai/desktop-theme.json",
+  "name": "Aular Paper",
+  "id": "aular-paper",
+  "light": {
+    "palette": {
+      "neutral": "#f7f5f0",
+      "ink": "#292824",
+      "primary": "#ba5d3e",
+      "accent": "#ba5d3e",
+      "success": "#4d7658",
+      "warning": "#85612c",
+      "error": "#a7463f",
+      "info": "#526d8c",
+      "interactive": "#ba5d3e",
+      "diffAdd": "#4d7658",
+      "diffDelete": "#a7463f"
+    },
+    "overrides": {
+      "text-weak": "#79756d",
+      "markdown-heading": "#292824",
+      "markdown-text": "#292824",
+      "markdown-link": "#99472f",
+      "markdown-link-text": "#99472f",
+      "markdown-code": "#4d7658",
+      "markdown-block-quote": "#79756d",
+      "markdown-emph": "#504d47",
+      "markdown-strong": "#292824",
+      "markdown-list-item": "#ba5d3e",
+      "markdown-list-enumeration": "#ba5d3e"
+    }
+  },
+  "dark": {
+    "palette": {
+      "neutral": "#171715",
+      "ink": "#eeeae2",
+      "primary": "#cf7655",
+      "accent": "#cf7655",
+      "success": "#83b88e",
+      "warning": "#d3ad68",
+      "error": "#e4978f",
+      "info": "#9bb7d6",
+      "interactive": "#cf7655",
+      "diffAdd": "#83b88e",
+      "diffDelete": "#e4978f"
+    },
+    "overrides": {
+      "text-weak": "#918c83",
+      "markdown-heading": "#eeeae2",
+      "markdown-text": "#eeeae2",
+      "markdown-link": "#e9a58c",
+      "markdown-link-text": "#e9a58c",
+      "markdown-code": "#83b88e",
+      "markdown-block-quote": "#918c83",
+      "markdown-emph": "#c8c3ba",
+      "markdown-strong": "#eeeae2",
+      "markdown-list-item": "#cf7655",
+      "markdown-list-enumeration": "#cf7655"
+    }
+  }
+}

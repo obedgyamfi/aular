@@ -1,98 +1,94 @@
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
+import { ArrowDown } from "lucide-solid";
 
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";
-import { MessageBubble } from "~/components/message-bubble";
+import { SystemNote } from "~/components/message-body";
+import { MessageRow } from "~/components/message-row";
 import { Thinking } from "~/components/thinking";
+import { ToolCard } from "~/components/tool-card";
 import {
   activeAgent,
   activeConversationId,
-  activeMessages,
   activeWorking,
   briefsOfConversation,
   state,
 } from "~/lib/store";
-import type { Message } from "~/lib/types";
+import { focusComposer } from "~/lib/window";
+import type { Agent, Message, ToolCall } from "~/lib/types";
 
 /**
- * The conversation — ported from the prototype's MessageList.
+ * The channel timeline — the Slack/Discord shape.
  *
- * Messages are grouped: consecutive turns from the same side within a few
- * minutes read as one utterance, with the sender's name and avatar shown once
- * at the top of the group. Time dividers mark day breaks and long lulls, so the
- * thread has a shape. A long agent reply arrives split into chat-sized bubbles
- * (the <<<AULAR_CHUNK>>> markers the backend emits).
+ * Messages and tool calls interleave by time, so the agent's work is legible in
+ * place rather than hidden behind a separate "terminal" mode. Consecutive turns
+ * from one author collapse into a single run (see MessageRow), days break on a
+ * sticky pill, and everything that isn't a message — tool cards, briefs — is
+ * indented to the same content column as the prose above it.
  */
 const GROUP_GAP_MS = 5 * 60 * 1000;
-const LULL_MS = 30 * 60 * 1000;
+
+/** Gutter (40px portrait) + the row's 10px gap — the content column. */
+const GUTTER = "w-10 shrink-0";
+
+type Item =
+  | { kind: "message"; at: number; message: Message }
+  | { kind: "tool"; at: number; tool: ToolCall };
 
 export function MessageList() {
-  const messages = () => activeMessages();
   const agent = () => activeAgent();
 
   let scroller: HTMLDivElement | undefined;
   const [atBottom, setAtBottom] = createSignal(true);
   const [newCount, setNewCount] = createSignal(0);
 
-  // No per-row entrance animation: rows render against a moving gate on
-  // conversation switch (effects run after render), so recent history did an
-  // entrance dance that read as flicker. Streaming lists are hot paths —
-  // arrival is already announced by the thinking indicator and autoscroll.
+  // Messages and tool calls, one timeline, ordered by when they happened.
+  const items = createMemo<Item[]>(() => {
+    const convoId = activeConversationId();
+    if (!convoId) return [];
+    const msgs = (state.messages[convoId] ?? [])
+      .filter((m) => !isEmptyExhaust(m, !!state.streaming[m.id]))
+      .map((m) => ({ kind: "message" as const, at: Date.parse(m.created_at), message: m }));
+    const tools = (state.toolCalls[convoId] ?? []).map((t) => ({
+      kind: "tool" as const,
+      at: Date.parse(t.created_at),
+      tool: t,
+    }));
+    return [...msgs, ...tools].sort((a, b) => a.at - b.at);
+  });
 
   const byId = createMemo(() => {
     const map = new Map<string, Message>();
-    for (const m of messages()) map.set(m.id, m);
+    for (const it of items()) if (it.kind === "message") map.set(it.message.id, it.message);
     return map;
   });
 
-  /** Per-message grouping and divider info. */
+  /** Grouping + day-break metadata, per item. */
   const meta = createMemo(() =>
-    messages().map((m, i) => {
-      const list = messages();
-      const prev = list[i - 1];
-      const next = list[i + 1];
+    items().map((it, i) => {
+      const prev = items()[i - 1];
 
-      const day = dayLabel(m.created_at);
-      const dayBreak = !prev || day !== dayLabel(prev.created_at);
+      const day = dayLabel(it.at);
+      const dayBreak = !prev || day !== dayLabel(prev.at);
 
-      const first = !prev || side(prev) !== side(m) || dayBreak || gap(prev, m) > GROUP_GAP_MS;
-      const last =
-        !next ||
-        side(next) !== side(m) ||
-        day !== dayLabel(next.created_at) ||
-        gap(m, next) > GROUP_GAP_MS;
+      // A new run starts on an author change, a day break, or a long silence.
+      const first =
+        !prev || sideOf(prev) !== sideOf(it) || dayBreak || it.at - prev.at > GROUP_GAP_MS;
 
-      // A full "day, time" on a day break; a bare clock when the conversation
-      // resumes after a lull. Otherwise nothing — silence is the default.
-      const time = new Date(m.created_at).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      const divider = dayBreak
-        ? `${day} ${time}`
-        : gap(prev, m) > LULL_MS
-          ? time
-          : "";
-
-      return { first, last, divider };
+      return { first, dayBreak, day };
     }),
   );
 
   // Follow the tail only when the reader is already there; otherwise count what
-  // they're missing and offer a jump. Yanking someone's scroll is hostile.
-  //
-  // The counter counts *messages that arrived*, nothing else. atBottom is read
-  // untracked — an earlier version subscribed to it, so every scroll past the
-  // threshold re-ran the effect and incremented the count with no new message.
+  // arrived and offer the jump. Yanking someone's scroll is hostile.
   let seenConvo: string | undefined;
   let seenCount = 0;
   createEffect(() => {
     const convo = activeConversationId();
-    const n = messages().length;
-    activeWorking(); // the typing indicator adds height worth following too
+    const n = items().length;
+    activeWorking();
 
     if (convo !== seenConvo) {
-      // A different thread: start at its tail, with nothing "new".
       seenConvo = convo;
       seenCount = n;
       setNewCount(0);
@@ -102,14 +98,10 @@ export function MessageList() {
 
     const arrived = Math.max(0, n - seenCount);
     seenCount = n;
-    // Your own send always lands you at the tail — nobody scrolls up, types,
-    // and wants to stay where they were while their message goes below.
+    const lastItem = items()[n - 1];
     const ownSend =
-      arrived > 0 && messages()[n - 1]?.sender_type === "user";
+      arrived > 0 && lastItem?.kind === "message" && lastItem.message.sender_type === "user";
     if (untrack(atBottom) || ownSend) {
-      // Scroll the *container*, not a sentinel: scrollIntoView aligns the
-      // sentinel's edge with the viewport and leaves the feed's bottom padding
-      // below the fold, so the last bubble ends up flush against the composer.
       queueMicrotask(() => scrollToEnd());
       setNewCount(0);
       setAtBottom(true);
@@ -127,10 +119,8 @@ export function MessageList() {
   };
 
   const scrollToEnd = (behavior: ScrollBehavior = "auto") => {
-    if (!scroller) return;
-    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+    scroller?.scrollTo({ top: scroller.scrollHeight, behavior });
   };
-
   const jump = () => {
     scrollToEnd("smooth");
     setAtBottom(true);
@@ -139,150 +129,235 @@ export function MessageList() {
 
   return (
     <div class="relative min-h-0 flex-1">
-      <div ref={scroller} onScroll={onScroll} class="h-full overflow-y-auto">
-        <div class="mx-auto flex w-full max-w-[820px] flex-col px-4 pb-8 pt-5">
-          <For each={messages()}>
-            {(m, i) => {
-              const info = () => meta()[i()]!;
-              const quoted = () =>
-                m.reply_to_message_id ? byId().get(m.reply_to_message_id) : undefined;
+      {/* overflow-x-hidden is the backstop: rows carry min-w-0 so they shrink,
+          and anything that genuinely needs to scroll sideways (code blocks,
+          diffs) owns its own overflow-x. Without it one rogue child puts a
+          horizontal scrollbar under the entire conversation. */}
+      <div ref={scroller} onScroll={onScroll} class="h-full overflow-y-auto overflow-x-hidden">
+        {/* Bottom-anchored, as Discord is: a short conversation sits on the
+            composer and grows upward, instead of stranding three messages at
+            the top of an empty screen. Once the content overflows, justify-end
+            stops mattering and it scrolls normally. */}
+        <div class="flex min-h-full w-full min-w-0 flex-col justify-end px-3 pb-6 pt-4">
+          <Show when={agent()}>
+            {(a) => <ConversationIntro agent={a()} empty={!items().length} />}
+          </Show>
 
+          <For each={items()}>
+            {(it, i) => {
+              const info = () => meta()[i()]!;
               return (
-                <Show when={!isEmptyExhaust(m, !!state.streaming[m.id])}>
-                <div class="flex flex-col">
-                  <Show when={info().divider}>
-                    <div class="flex justify-center py-3">
-                      <span class="text-[11px] text-v2-text-text-faint">
-                        {info().divider}
-                      </span>
-                    </div>
+                <div class="flex min-w-0 flex-col">
+                  <Show when={info().dayBreak}>
+                    <DayDivider label={info().day} />
                   </Show>
 
-                  {/* A breath between grouped bubbles; a bigger one between
-                      groups. Zero margin welded consecutive replies together. */}
-                  <div
-                    classList={{
-                      "mt-3": info().first && !info().divider,
-                      "mt-1.5": !info().first,
-                    }}
-                  >
-                    <Show
-                      when={m.sender_type !== "user"}
-                      fallback={
-                        <MessageBubble
-                          message={m}
-                          repliedTo={quoted()}
-                          agentName={agent()?.name ?? "Agent"}
-                          streaming={!!state.streaming[m.id]}
-                          showReplyQuote
-                          showMedia
-                          showMeta={info().last}
-                          first={info().first}
-                          last={info().last}
-                        />
-                      }
-                    >
-                      <Show
-                        when={m.sender_type !== "system"}
-                        fallback={
-                          <MessageBubble
-                            message={m}
-                            agentName={agent()?.name ?? "Agent"}
-                            showMeta={false}
-                          />
-                        }
-                      >
-                        {/* Incoming group: the sender's name above the group's
-                            first bubble, the avatar in a gutter beside it. */}
-                        <div class="flex gap-2">
-                          <div
-                            class="w-8 shrink-0 self-start"
-                            classList={{ "pt-[18px]": info().first }}
-                          >
-                            <Show when={info().first}>
-                              <Avatar name={agent()?.name ?? "Agent"} size={28} />
-                            </Show>
-                          </div>
-
-                          <div class="min-w-0 flex-1">
-                            <Show when={info().first}>
-                              <div class="mb-0.5 px-1 text-[11px] text-v2-text-text-faint">
-                                {agent()?.name ?? "Agent"}
-                              </div>
-                            </Show>
-
-                            <div class="flex flex-col gap-1.5">
-                              <For each={splitChunks(m.content)}>
-                                {(part, pi) => {
-                                  const parts = splitChunks(m.content);
-                                  const isLastPart = () => pi() === parts.length - 1;
-                                  return (
-                                    <MessageBubble
-                                      message={m}
-                                      contentOverride={part}
-                                      repliedTo={quoted()}
-                                      agentName={agent()?.name ?? "Agent"}
-                                      streaming={
-                                        !!state.streaming[m.id] && isLastPart()
-                                      }
-                                      showReplyQuote={pi() === 0}
-                                      showMedia={pi() === 0}
-                                      showMeta={info().last && isLastPart()}
-                                      first={info().first && pi() === 0}
-                                      last={info().last && isLastPart()}
-                                      actionable={
-                                        i() === messages().length - 1 && isLastPart()
-                                      }
-                                    />
-                                  );
-                                }}
-                              </For>
-                            </div>
-                          </div>
+                  {/* A run gets air above it; a continuation hugs the one before. */}
+                  <div class="min-w-0" classList={{ "mt-4": info().first && !info().dayBreak }}>
+                    <Show when={it.kind === "tool"}>
+                      {/* A command, indented to the prose column. */}
+                      <div class="mx-1 flex gap-2.5 px-2 py-1">
+                        <div class={GUTTER} />
+                        <div class="min-w-0 flex-1">
+                          <ToolCard tool={(it as Extract<Item, { kind: "tool" }>).tool} />
                         </div>
-                      </Show>
+                      </div>
+                    </Show>
+
+                    <Show when={it.kind === "message"}>
+                      {(() => {
+                        const m = (it as Extract<Item, { kind: "message" }>).message;
+                        const quoted = () =>
+                          m.reply_to_message_id ? byId().get(m.reply_to_message_id) : undefined;
+
+                        // Platform notes stay centered and neutral.
+                        if (m.sender_type === "system") {
+                          return <SystemNote content={m.content} />;
+                        }
+
+                        // A long reply arrives pre-split into chat-sized chunks;
+                        // each renders as its own row, only the first titled.
+                        const parts = () => splitChunks(m.content);
+                        return (
+                          <For each={parts()}>
+                            {(part, pi) => {
+                              const isLast = () => pi() === parts().length - 1;
+                              return (
+                                <MessageRow
+                                  message={m}
+                                  contentOverride={part}
+                                  repliedTo={quoted()}
+                                  authorName={agent()?.name ?? "Agent"}
+                                  first={info().first && pi() === 0}
+                                  streaming={!!state.streaming[m.id] && isLast()}
+                                  showReplyQuote={pi() === 0}
+                                  showMedia={pi() === 0}
+                                  working={
+                                    m.sender_type !== "user" &&
+                                    activeWorking() &&
+                                    i() === items().length - 1
+                                  }
+                                  actionable={i() === items().length - 1 && isLast()}
+                                />
+                              );
+                            }}
+                          </For>
+                        );
+                      })()}
                     </Show>
                   </div>
                 </div>
-                </Show>
               );
             }}
           </For>
 
-          {/* Briefs: the org's typed reports, at the foot of the thread where
-              the newest work is. A decision keeps its buttons until answered. */}
+          {/* Briefs: the org's typed reports, at the foot where the newest work is. */}
           <For each={briefsOfConversation(activeConversationId() ?? "")}>
             {(b) => (
-              <div class="pt-3">
-                <BriefCard brief={b} />
+              <div class="mx-1 flex gap-2.5 px-2 pt-4">
+                <div class={GUTTER} />
+                <div class="min-w-0 flex-1">
+                  <BriefCard brief={b} />
+                </div>
               </div>
             )}
           </For>
 
           <Show when={activeWorking()}>
-            <div class="aular-rise">
-              <Thinking agentName={agent()?.name ?? "Agent"} />
+            <div class="aular-rise mx-1 flex gap-2.5 px-2 pt-2">
+              <div class={GUTTER} />
+              <div class="min-w-0 flex-1">
+                <Thinking agentName={agent()?.name ?? "Agent"} />
+              </div>
             </div>
           </Show>
-
         </div>
       </div>
 
-      <Show when={!atBottom() && newCount() > 0}>
+      {/* Scroll to the latest — always offered when you've scrolled up, with a
+          count when messages arrived behind your back. */}
+      <Show when={!atBottom()}>
         <button
           type="button"
           onClick={jump}
-          class="aular-fade absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-v2-border-border-base bg-v2-background-bg-layer-02 px-3 py-1.5 text-[11px] text-v2-text-text-base shadow-lg transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+          aria-label="Scroll to latest"
+          class="aular-pop absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-[var(--pill)] border border-[var(--line)] bg-[var(--surface)] py-1.5 pl-2 pr-3 text-[11.5px] font-[650] text-[var(--text)] transition-colors hover:border-[var(--accent)]"
+          style={{ "box-shadow": "var(--shadow-2)" }}
         >
-          {newCount()} new message{newCount() === 1 ? "" : "s"} ↓
+          <span class="grid size-5 place-items-center rounded-full bg-[var(--accent)] text-[var(--on-accent)]">
+            <ArrowDown size={13} stroke-width={2.4} />
+          </span>
+          <Show when={newCount() > 0} fallback={<span>Latest</span>}>
+            {newCount()} new message{newCount() === 1 ? "" : "s"}
+          </Show>
         </button>
       </Show>
     </div>
   );
 }
 
+/**
+ * The head of the conversation — Discord's "beginning of your direct message
+ * history", and the one place a channel introduces whoever is in it.
+ *
+ * A channel and a person read differently: the system agent is a place, so it
+ * gets `#name` and the language of a channel; a teammate gets a portrait, a
+ * handle and their role.
+ */
+function ConversationIntro(props: { agent: Agent; empty: boolean }) {
+  const isChannel = () => props.agent.role === "system";
+  const name = () => props.agent.name;
+  const handle = () => `@${name().toLowerCase().replace(/\s+/g, "")}`;
+  const firstName = () => name().split(/\s+/)[0]!;
 
-/** A long reply arrives split into chat-sized bubbles. */
+  return (
+    <div class="flex flex-col items-start gap-1.5 px-2 pb-4 pt-2">
+      <Show
+        when={!isChannel()}
+        fallback={
+          <span class="mb-1 grid size-[68px] place-items-center rounded-full bg-[var(--element)] text-[34px] font-bold text-[var(--text-2)]">
+            #
+          </span>
+        }
+      >
+        <span class="mb-1">
+          <Avatar name={name()} size={68} circle />
+        </span>
+      </Show>
+
+      <h2 class="text-[30px] font-bold leading-tight tracking-tight text-[var(--text)]">
+        {isChannel() ? name().toLowerCase() : name()}
+      </h2>
+
+      <p class="text-[14px] text-[var(--text-2)]">
+        <Show when={!isChannel()} fallback={<>The channel you build the organization in.</>}>
+          {handle()} · {prettyRole(props.agent.role)}
+        </Show>
+      </p>
+
+      <p class="max-w-[620px] text-[13.5px] leading-5 text-[var(--muted)]">
+        <Show
+          when={!isChannel()}
+          fallback={
+            <>
+              This is the start of the <strong class="text-[var(--text-2)]">#{name().toLowerCase()}</strong>{" "}
+              channel. Describe the company you want and it gets built here.
+            </>
+          }
+        >
+          This is the beginning of your conversation with{" "}
+          <strong class="text-[var(--text-2)]">{name()}</strong>. They run on this machine, on your
+          own model key.
+        </Show>
+      </p>
+
+      {/* Discord waves for you here. We don't send anything on your behalf —
+          a turn costs tokens, and the first thing an agent hears shouldn't be
+          something you didn't write. So it just puts you in the composer. */}
+      <Show when={props.empty}>
+        <button
+          type="button"
+          onClick={focusComposer}
+          class="mt-2 rounded-[var(--r2)] bg-[var(--accent)] bg-[image:var(--accent-grad)] px-4 py-2 text-[13.5px] font-medium text-[var(--on-accent)] transition-all hover:brightness-110"
+        >
+          {isChannel() ? "Start building" : `Send ${firstName()} their first message`}
+        </button>
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * The day break — Discord's hairline with the date sitting on it.
+ *
+ * Sticky, which Discord's is not: it rides the top of the viewport while you
+ * read that day, so a long scroll never loses track of when you are. The label
+ * carries the conversation's own background so the rule appears to pass behind
+ * it.
+ */
+function DayDivider(props: { label: string }) {
+  return (
+    <div
+      aria-label={props.label}
+      class="pointer-events-none sticky top-0 z-20 flex items-center py-2"
+    >
+      <span class="h-px min-w-0 flex-1 bg-[var(--line)]" />
+      <span class="shrink-0 bg-[var(--bg)] px-2 text-[11px] font-semibold tracking-[0.02em] text-[var(--faint)]">
+        {props.label}
+      </span>
+      <span class="h-px min-w-0 flex-1 bg-[var(--line)]" />
+    </div>
+  );
+}
+
+function prettyRole(role: string): string {
+  return role
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/** A long reply arrives split into chat-sized chunks. */
 function splitChunks(content: string): string[] {
   const parts = content
     .split("<<<AULAR_CHUNK>>>")
@@ -303,25 +378,29 @@ export function isEmptyExhaust(m: Message, streaming: boolean): boolean {
   return !Array.isArray(media) || media.length === 0;
 }
 
-const side = (m: Message) => (m.sender_type === "user" ? "user" : "agent");
+/**
+ * Which run an item belongs to.
+ *
+ * Tool cards and system notes are each their OWN side, deliberately: they draw
+ * no author line, so if they shared the agent's side they would silently absorb
+ * its run-start and the agent's prose would render headerless forever — no
+ * portrait, no name. Giving them their own side means the reply after a command
+ * or a "dispatch landed" note starts a fresh run with its portrait back.
+ */
+const sideOf = (it: Item): "user" | "agent" | "system" | "tool" => {
+  if (it.kind === "tool") return "tool";
+  if (it.message.sender_type === "user") return "user";
+  if (it.message.sender_type === "system") return "system";
+  return "agent";
+};
 
-const gap = (a?: Message, b?: Message) =>
-  a && b
-    ? Math.abs(new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    : Infinity;
-
-function dayLabel(iso: string): string {
-  const d = new Date(iso);
+function dayLabel(at: number): string {
+  const d = new Date(at);
   if (Number.isNaN(d.getTime())) return "";
   const now = new Date();
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-
   if (d.toDateString() === now.toDateString()) return "Today";
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }

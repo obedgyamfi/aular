@@ -15,7 +15,6 @@ export type MenuAction =
   | "edit.copy"
   | "edit.paste"
   | "edit.selectAll"
-  | "view.toggleSidebar"
   | "view.zoomIn"
   | "view.zoomOut"
   | "view.zoomReset"
@@ -62,8 +61,6 @@ export const DESKTOP_MENU: MenuGroup[] = [
     id: "view",
     label: "View",
     items: [
-      { type: "item", label: "Toggle Sidebar", action: "view.toggleSidebar", accelerator: "Ctrl+B" },
-      { type: "separator" },
       { type: "item", label: "Zoom In", action: "view.zoomIn", accelerator: "Ctrl+=" },
       { type: "item", label: "Zoom Out", action: "view.zoomOut", accelerator: "Ctrl+-" },
       { type: "item", label: "Reset Zoom", action: "view.zoomReset", accelerator: "Ctrl+0" },

@@ -1,15 +1,16 @@
-import { createSignal, Show } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
+import { Hash, UserRound } from "lucide-solid";
 
+import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";
 import { Composer } from "~/components/composer";
+import { Tooltip } from "~/components/tooltip";
 import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
 import { Onboarding } from "~/components/onboarding";
-import { OutputPanel } from "~/components/output-panel";
 import { RoutinesModal } from "~/components/routines-modal";
 import { TaskStrip } from "~/components/task-state";
-import { WorkFeed } from "~/components/work-panel";
 import {
   actions,
   activeAgent,
@@ -19,24 +20,51 @@ import {
   tasksOfConversation,
 } from "~/lib/store";
 
+/** working | waiting (on a person) | idle — drives the header status pill. */
+type ChatStatus = "working" | "waiting" | "idle";
+const STATUS_PILL: Record<ChatStatus, { label: string; dot: string }> = {
+  working: { label: "Working", dot: "var(--green)" },
+  waiting: { label: "Waiting on you", dot: "var(--amber)" },
+  idle: { label: "Idle", dot: "var(--faint)" },
+};
+
 /**
  * The chat register.
  *
- * The header carries the agent's identity and its live state — working, or its
- * role — and opens its profile. The two controls beside it are the two things
- * you do with an agent that aren't talking: see what it does on a schedule
- * (Routines), and watch how it works rather than what it concluded (the
- * terminal view). That view is a lens on *this* conversation, not another
- * place — same thread, same composer, different rendering.
+ * A channel: a compact header naming the place, the timeline, and the composer.
+ * The header carries the two things you do with an agent that aren't talking —
+ * see what it runs on a schedule, and see who it is.
  */
 export function ChatPane() {
   const [routines, setRoutines] = createSignal(false);
+  // The profile panel is open by default, and the choice sticks. The storage
+  // key still says "member-rail" from when this column held one — renaming it
+  // would silently reset the preference for anyone who already set it.
+  const [profileOpen, setProfileOpen] = createSignal(
+    localStorage.getItem("aular-member-rail") !== "0",
+  );
+  const toggleProfile = () => {
+    const next = !profileOpen();
+    setProfileOpen(next);
+    try {
+      localStorage.setItem("aular-member-rail", next ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
 
   /** The system agent ships with every account; staff is what you build. */
   const hasStaff = () => state.agents.some((a) => a.role !== "system");
 
+  const status = createMemo<ChatStatus>(() => {
+    if (activeWorking()) return "working";
+    const { assigned } = tasksOfConversation(activeConversationId() ?? "");
+    if (assigned.some((t) => t.state === "input-required")) return "waiting";
+    return "idle";
+  });
+
   return (
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
       <Show
         when={activeAgent()}
         fallback={
@@ -61,96 +89,136 @@ export function ChatPane() {
       >
         {(agent) => (
           <>
-            <header class="flex h-11 shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-3">
-              <button
-                type="button"
-                onClick={() => actions.openProfile(agent().id)}
-                aria-label="Agent profile"
-                class="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-              >
-                <Avatar name={agent().name} size={26} />
-                <span class="flex min-w-0 flex-col">
-                  <span class="truncate text-[12.5px] font-medium leading-4 text-v2-text-text-base">
-                    {agent().name}
-                  </span>
+            {/* The channel header, Buzz's shape: one compact line — a leading
+                glyph saying what kind of place this is, the name, a small live
+                badge, then icon actions. No portrait, no role subtitle, no fat
+                status pill: a channel is identified by its name, and the height
+                that saves goes to the conversation. */}
+            <header class="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-[var(--line)] px-5">
+              {/* Plain text, not a control. It was a button that opened the
+                  profile, which meant a hover fill across the whole header and
+                  a role that only appeared once you moused over it — motion for
+                  something that never changes. The profile has its own toggle
+                  two icons to the right. */}
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                {/* A channel gets a hash, a teammate gets their face — the same
+                    distinction the sidebar draws, so the header confirms which
+                    kind of place you're in rather than repeating its name. */}
+                <span class="flex shrink-0 items-center text-[var(--muted)]">
                   <Show
-                    when={!activeWorking()}
-                    fallback={
-                      <span class="aular-shimmer text-[10.5px] font-medium leading-3">
-                        working…
-                      </span>
-                    }
+                    when={agent().role === "system"}
+                    fallback={<Avatar name={agent().name} size={24} circle />}
                   >
-                    <span class="truncate text-[10.5px] leading-3 text-v2-text-text-faint">
-                      {prettyRole(agent().role)}
-                    </span>
+                    <Hash size={18} stroke-width={2.2} />
                   </Show>
                 </span>
-              </button>
+                <h1 class="shrink-0 truncate text-[16px] font-semibold leading-6 tracking-tight text-[var(--text)]">
+                  {agent().role === "system"
+                    ? agent().name.toLowerCase()
+                    : agent().name}
+                </h1>
+                {/* Discord's rule between a channel's name and its topic. */}
+                <span aria-hidden="true" class="h-5 w-px shrink-0 bg-[var(--line)]" />
+                <span class="min-w-0 truncate text-[13px] leading-5 text-[var(--muted)]">
+                  {prettyRole(agent().role)}
+                </span>
+              </div>
 
-              <div class="flex-1" />
+              {/* Live state as a small badge, and only when there IS state. */}
+              <Show when={status() !== "idle"}>
+                <span class="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--pill)] bg-[var(--element)] px-2 py-[3px] text-[11px] font-semibold text-[var(--muted)]">
+                  <span
+                    class="size-[6px] rounded-full"
+                    style={{ background: STATUS_PILL[status()].dot }}
+                  />
+                  {STATUS_PILL[status()].label}
+                </span>
+              </Show>
 
-              <button
-                type="button"
-                onClick={() => setRoutines(true)}
-                title="Scheduled work — what this agent does on its own"
-                class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
-              >
-                <Icon name="task" size="small" />
-                Routines
-              </button>
+              <div class="flex shrink-0 items-center gap-1">
+                <Tooltip label="Scheduled work" side="top">
+                  <button
+                    type="button"
+                    onClick={() => setRoutines(true)}
+                    aria-label="Routines"
+                    class="grid size-8 place-items-center rounded-[var(--r2)] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+                  >
+                    <Icon name="task" size="small" />
+                  </button>
+                </Tooltip>
 
-              {/* The lens. Same conversation, drawn as talk or as work. */}
-              <button
-                type="button"
-                onClick={() => actions.toggleChatView()}
-                aria-pressed={state.chatView === "work"}
-                title={
-                  state.chatView === "work"
-                    ? "Back to the conversation"
-                    : "Show the work — every tool this agent used"
-                }
-                class="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-                classList={{
-                  "bg-v2-overlay-simple-overlay-pressed text-v2-icon-icon-accent":
-                    state.chatView === "work",
-                  "text-v2-icon-icon-muted hover:text-v2-icon-icon-base":
-                    state.chatView !== "work",
-                }}
-              >
-                <Icon
-                  name={state.chatView === "work" ? "speech-bubble" : "terminal"}
-                  size="small"
-                />
-              </button>
+                {/* Always the profile — AULAR is an agent like any other, and
+                    the one thing worth showing beside a conversation is who
+                    you're talking to. */}
+                {(() => {
+                  const label = () => (profileOpen() ? "Hide profile" : "Show profile");
+                  return (
+                    <Tooltip label={label()} side="top">
+                      <button
+                        type="button"
+                        onClick={toggleProfile}
+                        aria-pressed={profileOpen()}
+                        aria-label="Profile"
+                        class="grid size-8 place-items-center rounded-[var(--r2)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+                        classList={{
+                          "bg-[var(--element)] text-[var(--text)]": profileOpen(),
+                          "text-[var(--muted)]": !profileOpen(),
+                        }}
+                      >
+                        <UserRound size={18} stroke-width={1.9} />
+                      </button>
+                    </Tooltip>
+                  );
+                })()}
+
+              </div>
             </header>
 
             {/* This conversation's live work, as chips — the spine surfacing. */}
             {(() => {
-              const tasks = () => tasksOfConversation(activeConversationId() ?? "");
+              const tasks = () =>
+                tasksOfConversation(activeConversationId() ?? "");
               return (
-                <TaskStrip assigned={tasks().assigned} delegated={tasks().delegated} />
+                <TaskStrip
+                  assigned={tasks().assigned}
+                  delegated={tasks().delegated}
+                />
               );
             })()}
 
             <div class="flex min-h-0 min-w-0 flex-1">
+              {/* The composer belongs to the conversation column, not to the
+                  pane: the panel beside it runs the full height to the bottom,
+                  so a composer spanning the whole width would slide underneath
+                  it and put its controls in the panel's column. */}
               <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-                <Show when={state.chatView === "chat"} fallback={<WorkFeed />}>
-                  <MessageList />
-                </Show>
+                <MessageList />
+                <Composer />
               </div>
-              <OutputPanel />
+              {/* Discord swaps this column by context — member list in a
+                  channel, profile in a DM. We don't: #aular is a channel, but
+                  it's still one agent you're talking to, and its profile is the
+                  same thing every other agent shows here. A roster of everyone
+                  belongs on the org chart, not beside a conversation. */}
+              <Show when={profileOpen()}>
+                <AgentProfileAside agent={agent()} onClose={toggleProfile} />
+              </Show>
             </div>
           </>
         )}
       </Show>
 
-      <Show when={activeAgent() || hasStaff()}>
+      {/* With no thread open there's no column to sit in, so the composer spans
+          the pane and simply invites you to pick someone. */}
+      <Show when={!activeAgent() && hasStaff()}>
         <Composer />
       </Show>
 
       <Show when={routines() && activeAgent()}>
-        <RoutinesModal agent={activeAgent()!} onClose={() => setRoutines(false)} />
+        <RoutinesModal
+          agent={activeAgent()!}
+          onClose={() => setRoutines(false)}
+        />
       </Show>
     </div>
   );

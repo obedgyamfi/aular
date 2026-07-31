@@ -4,7 +4,7 @@ import autoAnimate from "@formkit/auto-animate";
 import { Avatar } from "~/components/avatar";
 import { RepoGraph } from "~/components/repo-graph";
 import { age, StateDot, STATE_META } from "~/components/task-state";
-import { actions, orgCapable, state } from "~/lib/store";
+import { actions, activeProject, atHome, orgCapable, scopedTasks, state } from "~/lib/store";
 import type { Task, TaskState } from "~/lib/types";
 import { TERMINAL_TASK_STATES } from "~/lib/types";
 
@@ -40,9 +40,11 @@ export function WorkBoard() {
     orgCapable("tasks") ? "board" : "commits",
   );
   const byLane = createMemo(() => {
-    const all = Object.values(state.tasks).sort((a, b) =>
-      (b.state_updated_at ?? b.created_at).localeCompare(a.state_updated_at ?? a.created_at),
-    );
+    const all = scopedTasks()
+      .slice()
+      .sort((a, b) =>
+        (b.state_updated_at ?? b.created_at).localeCompare(a.state_updated_at ?? a.created_at),
+      );
     return LANES.map((lane) => {
       const tasks = all.filter((t) => lane.states.includes(t.state));
       return {
@@ -53,12 +55,14 @@ export function WorkBoard() {
     });
   });
 
-  const anyWork = () => Object.keys(state.tasks).length > 0;
+  const anyWork = () => scopedTasks().length > 0;
 
   return (
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-v2-background-bg-base">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
       <header class="flex h-11 shrink-0 items-center gap-2 border-b border-v2-border-border-muted px-4">
-        <h1 class="text-[13px] font-medium text-v2-text-text-base">Work</h1>
+        <h1 class="text-[13px] font-medium text-v2-text-text-base">
+          {atHome() ? "Mission control" : "Work board"}
+        </h1>
         <Show when={hasBoard()}>
           <div class="ml-1 flex items-center gap-px overflow-hidden rounded-md border border-v2-border-border-muted">
             <ViewTab active={view() === "board"} onClick={() => setView("board")}>Board</ViewTab>
@@ -66,9 +70,11 @@ export function WorkBoard() {
           </div>
         </Show>
         <p class="text-[11.5px] text-v2-text-text-muted">
-          {view() === "board"
-            ? "every task in the org, live — click a card to open the conversation behind it"
-            : "the repository's history, drawn — who committed what, on which branch"}
+          {view() === "commits"
+            ? "the repository's history, drawn — who committed what, on which branch"
+            : atHome()
+              ? "every task in the org, live — click a card to open the conversation behind it"
+              : `work dispatched for ${activeProject().name} — click a card to open the conversation behind it`}
         </p>
       </header>
 

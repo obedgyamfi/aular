@@ -50,20 +50,6 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
       run: () => actions.setRegister("chat"),
     },
     {
-      id: "work",
-      label:
-        state.chatView === "work"
-          ? "Show the conversation"
-          : "Show the work — tools and terminal",
-      hint: state.activeAgentId ? undefined : "Open an agent first",
-      icon: "terminal",
-      keywords: "tools terminal session feed work view",
-      run: () => {
-        actions.setRegister("chat");
-        actions.toggleChatView();
-      },
-    },
-    {
       id: "org",
       label: "Go to Organization",
       hint: "Overview, chart, knowledge bank",
@@ -84,7 +70,7 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
       label: "Open Settings",
       icon: "settings-gear",
       keywords: "preferences model key byok usage memory account",
-      run: () => actions.setRegister("settings"),
+      run: () => actions.openSettings("general"),
     },
     {
       id: "hire",

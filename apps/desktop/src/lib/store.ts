@@ -3,18 +3,24 @@ import { createStore, produce } from "solid-js/store";
 import { api, openRealtime } from "./api";
 import type {
   Agent,
+  ApiProject,
   AuthUser,
   Brief,
   Health,
   MediaDescriptor,
   Message,
   ModelSettings,
+  PhaseState,
+  Project,
+  ProjectStatus,
   RealtimeEvent,
   RuntimeStatus,
   Task,
   ToolCall,
 } from "./types";
 import { TERMINAL_TASK_STATES } from "./types";
+import type { Proposal } from "./intent";
+import { parseWorkflowArtifact, type WorkflowArtifact } from "./workflow";
 
 /**
  * The app's state.
@@ -23,17 +29,16 @@ import { TERMINAL_TASK_STATES } from "./types";
  * and REST both write here, and keeping per-agent view state (unread, preview,
  * typing) separate from the message log is what stops them fighting.
  */
-export type Register = "home" | "chat" | "work" | "org" | "calendar" | "settings";
-
-/**
- * How the chat register draws the conversation you're in.
- *
- * "chat" is the messenger — bubbles, groups, media. "work" is the same thread as
- * a terminal session: the agent's output as a document, with every tool it used
- * in place. One conversation, two ways of looking at it, which is why this is a
- * view and not a register.
- */
-export type ChatView = "chat" | "work";
+export type Register =
+  | "chat"
+  | "work"
+  | "org"
+  | "knowledge"
+  /** A single project in full. There is no "all projects" screen — the rail is
+   *  the switcher, and a list of what the rail already shows is furniture. */
+  | "overview"
+  | "roadmap"
+  | "calendar";
 
 /** The settings section to land on — set by whatever sent you there. */
 export type SettingsSection =
@@ -45,10 +50,17 @@ export type SettingsSection =
   | "memory"
   | "about";
 
-/** One stop in the view history — what back/forward walk through. */
+/**
+ * One stop in the view history — what back/forward walk through.
+ *
+ * The project belongs here as much as the register does: the rail switches
+ * *which org you're looking at*, so a stop that only remembered the register
+ * would replay the right surface scoped to the wrong team.
+ */
 export interface View {
   register: Register;
   agentId: string | null;
+  projectId: string;
 }
 
 /** What the chat list shows beneath an agent's name. */
@@ -60,7 +72,9 @@ export interface Preview {
 
 interface State {
   register: Register;
-  chatView: ChatView;
+  /** Settings is a dialog over wherever you are, not a place you navigate to —
+   *  closing it puts you back exactly where you were. */
+  settingsOpen: boolean;
   settingsSection: SettingsSection;
   user: AuthUser | null;
   health: Health | null;
@@ -72,6 +86,28 @@ interface State {
   /** An agent's profile page, opened over the chat register. */
   profileAgentId: string | null;
 
+  /** The org's projects and the active (selected) one. Selecting re-scopes the
+   *  app to its team — no detail page; the card expands in place. Frontend-only
+   *  for now (seeded client-side). */
+  projects: Project[];
+  activeProjectId: string;
+
+  /** A proposal the AULAR system agent has drafted but not yet applied — the
+   *  ghost that materializes in the target section (a project card, a schedule
+   *  row) until you Apply or Discard it. */
+  draft: Proposal | null;
+
+  /** Per-agent workflows (n8n-style graphs), drawn on the org canvas when an
+   *  agent is focused. Seeded illustratively; real ones arrive as chat
+   *  artifacts (captured from the agent's `<<<AULAR_WORKFLOW>>>` replies).
+   *  Keyed by the owning agent's id. */
+  workflows: Record<string, WorkflowArtifact[]>;
+
+  /** Per-agent skills and user-authored catalog entries — the config page's
+   *  node graph. Frontend-only until skills get a backend model. */
+  agentSkills: Record<string, string[]>;
+  customSkills: string[];
+
   /** agent id → conversation id, and the reverse. */
   conversationOf: Record<string, string>;
   agentOf: Record<string, string>;
@@ -81,9 +117,6 @@ interface State {
 
   /** The org's work: task id → task, A2A-stated. Fed by boot + task.updated. */
   tasks: Record<string, Task>;
-
-  /** A tool call held open beside the chat (the pinned-output panel). */
-  pinnedToolId: string | null;
 
   /** Typed agent reports: brief id → brief. */
   briefs: Record<string, Brief>;
@@ -108,9 +141,106 @@ interface State {
   error: string | null;
 }
 
+/**
+ * The organization itself, as a project — every agent, always.
+ *
+ * This is the rail's home tile: Discord's DM button, holding the whole company
+ * rather than one project's slice of it. Every other tile is a real project.
+ */
+export const HOME_PROJECT: Project = {
+  id: "proj-default",
+  name: "Your Organization",
+  status: "active",
+  objective: "Everyone on your team, in one place.",
+  leadId: null,
+  due: null,
+  team: [],
+  allAgents: true,
+  progress: 0,
+};
+
+/** A project backed by a real core-api row — safe to PATCH/persist. The default
+ *  "everyone" project and locally-created ones (older backend) are client-only. */
+const isPersistedProject = (id: string) => id !== HOME_PROJECT.id && !id.startsWith("local-");
+
+/**
+ * One illustrative workflow, so a focused agent's canvas shows a real n8n-style
+ * flow before agents author their own. Trigger → fetch → decision → alert/report
+ * — the shape of a scheduled brief. Attached to the first staff agent (or the
+ * system agent when the org is still empty).
+ */
+function seedSampleWorkflows(agents: Agent[]): Record<string, WorkflowArtifact[]> {
+  const target =
+    agents.find((a) => a.role !== "system") ?? agents.find((a) => a.role === "system");
+  if (!target) return {};
+  const wf: WorkflowArtifact = {
+    id: `wf-${target.id}-brief`,
+    title: "Morning intelligence brief",
+    owner: target.name,
+    schedule: "Weekdays · 09:00",
+    status: "ready",
+    nodes: [
+      { id: "trigger", label: "Weekday 09:00", kind: "trigger", status: "complete" },
+      { id: "fetch", label: "Fetch sources", kind: "action", owner: target.name, status: "running" },
+      { id: "decide", label: "Anything urgent?", kind: "decision", status: "waiting" },
+      { id: "alert", label: "Alert you", kind: "alert", status: "waiting" },
+      { id: "report", label: "Daily digest", kind: "artifact", status: "waiting" },
+    ],
+    edges: [
+      { from: "trigger", to: "fetch" },
+      { from: "fetch", to: "decide" },
+      { from: "decide", to: "alert", condition: "critical", label: "urgent" },
+      { from: "decide", to: "report", condition: "no", label: "else" },
+    ],
+  };
+  return { [target.id]: [wf] };
+}
+
+const PROJECT_STATUSES: ReadonlySet<string> = new Set(["active", "planning", "paused", "done"]);
+const PHASE_STATES: ReadonlySet<string> = new Set(["done", "active", "queued", "blocked"]);
+
+/**
+ * Map a core-api project onto the richer client Project. Phases now come from
+ * the backend (the lead owns them via the ROADMAP block); progress is derived
+ * from them — the share of phases done.
+ */
+function mapProject(p: ApiProject): Project {
+  const phases = (p.phases ?? []).map((ph) => ({
+    id: ph.id,
+    name: ph.name,
+    ownerId: ph.owner_id,
+    start: ph.start,
+    end: ph.end,
+    state: (PHASE_STATES.has(ph.state) ? ph.state : "queued") as PhaseState,
+  }));
+  const doneCount = phases.filter((ph) => ph.state === "done").length;
+  return {
+    id: p.id,
+    name: p.name,
+    objective: p.objective,
+    status: (PROJECT_STATUSES.has(p.status) ? p.status : "active") as ProjectStatus,
+    leadId: p.lead_id,
+    due: null,
+    team: p.team ?? [],
+    phases,
+    progress: phases.length ? Math.round((doneCount / phases.length) * 100) : 0,
+  };
+}
+
+/** Upsert a backend project from a create/update event (carries its phases). */
+function upsertProject(p: ApiProject) {
+  const m = mapProject(p);
+  set("projects", (list) => {
+    const idx = list.findIndex((x) => x.id === m.id);
+    return idx === -1 ? [...list, m] : list.map((x) => (x.id === m.id ? m : x));
+  });
+}
+
 const [state, set] = createStore<State>({
-  register: "home",
-  chatView: "chat",
+  // The design lands you in chat — the pane carries onboarding when the org
+  // is empty, so there is no separate Home.
+  register: "chat",
+  settingsOpen: false,
   settingsSection: "general",
   user: null,
   health: null,
@@ -119,12 +249,17 @@ const [state, set] = createStore<State>({
   agents: [],
   activeAgentId: null,
   profileAgentId: null,
+  projects: [HOME_PROJECT],
+  activeProjectId: HOME_PROJECT.id,
+  draft: null,
+  workflows: {},
+  agentSkills: {},
+  customSkills: [],
   conversationOf: {},
   agentOf: {},
   messages: {},
   toolCalls: {},
   tasks: {},
-  pinnedToolId: null,
   briefs: {},
   unread: {},
   preview: {},
@@ -132,7 +267,7 @@ const [state, set] = createStore<State>({
   streaming: {},
   replyTo: null,
   attachment: null,
-  history: [{ register: "home", agentId: null }],
+  history: [{ register: "chat", agentId: null, projectId: HOME_PROJECT.id }],
   historyAt: 0,
   error: null,
 });
@@ -152,16 +287,29 @@ let stopRealtime: (() => void) | null = null;
  */
 let replaying = false;
 
-function pushView(view: View) {
+/**
+ * Record a stop. Callers name the register and agent; the project is stamped
+ * from state here, because every call site means "…in the org I'm looking at
+ * right now" and threading it through each one would only invite them to
+ * disagree.
+ */
+function pushView(view: Omit<View, "projectId">) {
   if (replaying) return;
+  const full: View = { ...view, projectId: state.activeProjectId };
   const current = state.history[state.historyAt];
-  if (current?.register === view.register && current?.agentId === view.agentId) return;
+  if (
+    current?.register === full.register &&
+    current?.agentId === full.agentId &&
+    current?.projectId === full.projectId
+  ) {
+    return;
+  }
 
   set(
     produce((s: State) => {
       // Moving somewhere new from a rewound history drops the forward branch —
       // the same rule a browser uses.
-      s.history = [...s.history.slice(0, s.historyAt + 1), view].slice(-50);
+      s.history = [...s.history.slice(0, s.historyAt + 1), full].slice(-50);
       s.historyAt = s.history.length - 1;
     }),
   );
@@ -173,6 +321,12 @@ async function replay(index: number) {
   replaying = true;
   try {
     set("historyAt", index);
+    // The project first: the register and the roster beneath it are both read
+    // through it, so restoring it last would flash the right surface scoped to
+    // the org we're leaving.
+    if (state.projects.some((p) => p.id === view.projectId)) {
+      set("activeProjectId", view.projectId);
+    }
     set("register", view.register);
     if (view.agentId && view.agentId !== state.activeAgentId) {
       await actions.openAgent(view.agentId);
@@ -259,6 +413,32 @@ function bumpPreview(agentId: string, msg: Message) {
   });
 }
 
+/**
+ * Capture an agent-authored workflow so it lands on the org canvas.
+ *
+ * A reply can carry a `<<<AULAR_WORKFLOW>>>` artifact; storing it under its owner
+ * is the truest "the agent patches the org" — the flow appears on the canvas
+ * beneath the agent that runs it, with no separate step. Idempotent: a streamed
+ * reply fires many edits, and the same artifact must be stored exactly once.
+ */
+function captureWorkflow(msg: Message) {
+  if (msg.sender_type !== "agent" && msg.sender_type !== "system") return;
+  const { workflow } = parseWorkflowArtifact(msg.content.replace(/<<<AULAR_CHUNK>>>/g, "\n\n"));
+  if (!workflow) return;
+  for (const list of Object.values(state.workflows)) {
+    if (list.some((w) => w.id === workflow.id)) return;
+  }
+  // The artifact names its owner; resolve to the agent id the canvas keys by,
+  // falling back to the thread's agent, then the system agent.
+  const byName = state.agents.find(
+    (a) => a.name.trim().toLowerCase() === workflow.owner.trim().toLowerCase(),
+  );
+  const ownerId =
+    byName?.id ?? state.agentOf[msg.conversation_id] ?? state.agents.find((a) => a.role === "system")?.id;
+  if (!ownerId) return;
+  set("workflows", ownerId, (list) => [...(list ?? []), workflow]);
+}
+
 /** Agent replies, for anything that needs to react to them (notifications). */
 type ReplyListener = (message: Message, agentId: string | undefined) => void;
 const replyListeners = new Set<ReplyListener>();
@@ -282,28 +462,184 @@ export const actions = {
     pushView({ register, agentId: state.activeAgentId });
   },
 
+  /**
+   * Open an agent's chat from anywhere. The design's sidebar is always present,
+   * so clicking an agent from the Org or Projects view must both switch to the
+   * chat register and load the thread — this is the one call that does both.
+   */
+  openChat(agentId: string) {
+    set("profileAgentId", null);
+    set("register", "chat");
+    void actions.openAgent(agentId);
+  },
+
   /** The agent's profile page — a place, not a popup. Lives over chat. */
   openProfile(agentId: string) {
     set("register", "chat");
     set("profileAgentId", agentId);
   },
+
+  // ── projects ────────────────────────────────────────────────────────────
+  /**
+   * Switch the active project — what clicking a rail tile does.
+   *
+   * Discord drops you in the server's first channel, not in a DM with whoever
+   * runs it, and that's the right rule here too: you came to see the *project*.
+   * So we land on its general channel — the system agent, which belongs to every
+   * team and is where you talk the project into shape. Only if that's somehow
+   * missing do we fall back to the lead.
+   *
+   * The project is set before the chat opens, so the view stop records the org
+   * you're arriving in rather than the one you left.
+   */
+  setActiveProject(id: string) {
+    set("activeProjectId", id);
+    const general = state.agents.find((a) => a.role === "system");
+    const p = state.projects.find((x) => x.id === id);
+    const lead = p?.leadId && state.agents.some((a) => a.id === p.leadId) ? p.leadId : null;
+    const land = general?.id ?? lead;
+    if (land) actions.openChat(land);
+  },
+
+  /**
+   * Select a project from the grid: re-scope the app to its team, without
+   * leaving the Projects register (the card expands in place). Distinct from
+   * setActiveProject, which the sidebar switcher uses to drop you in the lead's
+   * chat.
+   */
+  selectProject(id: string) {
+    set("activeProjectId", id);
+  },
+
+  /**
+   * The AULAR agent has drafted a change — hold it as a ghost, and jump to the
+   * section where it will materialize so the user watches it land. Passing null
+   * clears the draft (applied or discarded).
+   */
+  reflectDraft(p: Proposal | null) {
+    set("draft", p);
+    // Jump to the section where the ghost will land, so the user watches it.
+    const to: Register | null =
+      p?.kind === "project" ? "overview" : p?.kind === "routine" ? "calendar" : null;
+    if (to && state.register !== to) actions.setRegister(to);
+  },
+  clearDraft() {
+    set("draft", null);
+  },
+
+  /** Create a real project on the backend, then select it. (AULAR creates via
+   *  the PROJECT block; this is the user's own hand — the new-project dialog and
+   *  the "create a project" prompt draft.) */
+  async createProject(input: {
+    name: string;
+    objective: string;
+    leadId: string | null;
+    due: string | null;
+  }): Promise<Project> {
+    const name = input.name.trim() || "Untitled project";
+    const objective = input.objective.trim();
+    const team = input.leadId ? [input.leadId] : [];
+
+    // Persist through core-api when it's reachable. If the route is missing (an
+    // older backend build) or the call fails, still add the project locally so
+    // the button always works — the AULAR agent can create projects too, but
+    // this manual path must never depend on it or on the backend being current.
+    let created: ApiProject | null = null;
+    try {
+      created = await api.createProject({ name, objective, lead_id: input.leadId ?? undefined, team });
+    } catch {
+      created = null;
+    }
+
+    const project: Project = created
+      ? mapProject(created)
+      : {
+          id: `local-${crypto.randomUUID()}`,
+          name,
+          objective,
+          status: "active",
+          leadId: input.leadId ?? null,
+          due: input.due ?? null,
+          team,
+          progress: 0,
+        };
+    set("projects", (list) => (list.some((x) => x.id === project.id) ? list : [...list, project]));
+    // A new project earns a rail tile — land in it, the way Discord drops you
+    // into a server the moment you make one.
+    actions.setActiveProject(project.id);
+    return project;
+  },
+
+  /** Edit a project's basic fields — optimistic, then persisted for real
+   *  projects. The default "everyone" project and any local-only ones stay
+   *  client-side. Empty/blank patches are ignored (a rename can't clear a name). */
+  editProject(id: string, patch: { name?: string; objective?: string; status?: ProjectStatus }) {
+    const name = patch.name?.trim();
+    if (patch.name !== undefined && !name) return; // never let a project go nameless
+    set(
+      "projects",
+      (p) => p.id === id,
+      produce((proj: Project) => {
+        if (name !== undefined) proj.name = name;
+        if (patch.objective !== undefined) proj.objective = patch.objective.trim();
+        if (patch.status !== undefined) proj.status = patch.status;
+      }),
+    );
+    if (isPersistedProject(id)) {
+      void api
+        .updateProject(id, { ...patch, ...(name !== undefined ? { name } : {}) })
+        .catch(() => {});
+    }
+  },
+
+  /** Add or remove an agent from a project's team (the assign chips) — optimistic,
+   *  then persisted for real projects (the default "everyone" project is client-only). */
+  toggleProjectMember(projectId: string, agentId: string) {
+    let next: string[] = [];
+    set(
+      "projects",
+      (p) => p.id === projectId,
+      "team",
+      (team) => {
+        next = team.includes(agentId) ? team.filter((x) => x !== agentId) : [...team, agentId];
+        return next;
+      },
+    );
+    if (isPersistedProject(projectId)) {
+      void api.updateProject(projectId, { team: next }).catch(() => {});
+    }
+  },
+
+  // ── capabilities (frontend-only until skills get a backend model) ─────────
+  /** Replace an agent's skill list — the node graph's connect/disconnect. */
+  setAgentSkills(agentId: string, skills: string[]) {
+    set("agentSkills", agentId, skills);
+  },
+
+  /** A user-authored skill: into the catalog, and onto this agent. */
+  addCustomSkill(agentId: string, name: string, current: string[]) {
+    const skill = name.trim();
+    if (!skill) return;
+    if (!state.customSkills.includes(skill)) {
+      set("customSkills", (list) => [...list, skill]);
+    }
+    if (!current.includes(skill)) {
+      set("agentSkills", agentId, [...current, skill]);
+    }
+  },
   closeProfile() {
     set("profileAgentId", null);
-  },
-
-  setChatView(view: ChatView) {
-    set("chatView", view);
-  },
-
-  toggleChatView() {
-    set("chatView", state.chatView === "chat" ? "work" : "chat");
   },
 
   /** Open Settings on a particular section — used by the composer's model badge
    *  and anything else that points at a specific setting. */
   openSettings(section: SettingsSection) {
     set("settingsSection", section);
-    actions.setRegister("settings");
+    set("settingsOpen", true);
+  },
+
+  closeSettings() {
+    set("settingsOpen", false);
   },
 
   back() {
@@ -320,13 +656,14 @@ export const actions = {
    * one round-trip instead of one per row.
    */
   async load() {
-    const [health, agents, convos, model, tasks, briefs] = await Promise.all([
+    const [health, agents, convos, model, tasks, briefs, projectsList] = await Promise.all([
       api.health().catch(() => null),
       api.listAgents(),
       api.listConversations().then((c) => c ?? []),
       api.getModelSettings().catch(() => null),
       api.listTasks().then((t) => t ?? []).catch(() => []),
       api.listBriefs().then((b) => b ?? []).catch(() => []),
+      api.listProjects().then((p) => p ?? []).catch(() => []),
     ]);
 
     set(
@@ -335,6 +672,13 @@ export const actions = {
         s.agents = agents;
         s.model = model;
         s.error = null;
+        // Real projects from the backend (AULAR creates them via the PROJECT
+        // block + names a lead); the default "everyone" project stays at head.
+        s.projects = [HOME_PROJECT, ...projectsList.map(mapProject)];
+        // Seed one illustrative workflow so a focused agent has a flow to show.
+        if (Object.keys(s.workflows).length === 0) {
+          s.workflows = seedSampleWorkflows(agents);
+        }
         s.tasks = Object.fromEntries(tasks.map((t) => [t.id, t]));
         s.briefs = Object.fromEntries(briefs.map((b) => [b.id, b]));
         // The list is newest-activity first, and an agent can have several
@@ -479,10 +823,6 @@ export const actions = {
     set("replyTo", m);
   },
 
-  pinTool(id: string | null) {
-    set("pinnedToolId", id);
-  },
-
   async attach(file: File) {
     try {
       const descriptor = await api.uploadMedia(file);
@@ -498,7 +838,11 @@ export const actions = {
 
   async createAgent(input: Partial<Agent>) {
     const agent = await api.createAgent(input);
-    set("agents", (list) => [...list, agent]);
+    // Dedup: the realtime `agent.created` for this same id may already have
+    // landed before the POST resolved, so the optimistic add must guard too.
+    set("agents", (list) =>
+      list.some((a) => a.id === agent.id) ? list : [...list, agent],
+    );
     return agent;
   },
 
@@ -630,6 +974,7 @@ function handleEvent(e: RealtimeEvent) {
       if (msg.sender_type === "agent") {
         for (const fn of replyListeners) fn(msg, agentId);
       }
+      captureWorkflow(msg);
       return;
     }
 
@@ -649,7 +994,10 @@ function handleEvent(e: RealtimeEvent) {
       // A finalized reply means the agent is done — even if we never saw the
       // message.created that normally clears this (a brief socket drop used to
       // leave the row stuck on "typing…").
-      if (!msg.streaming) clearWorking(convoId);
+      if (!msg.streaming) {
+        clearWorking(convoId);
+        captureWorkflow(msg);
+      }
       return;
     }
 
@@ -715,6 +1063,13 @@ function handleEvent(e: RealtimeEvent) {
       set("agents", (a) => a.id === agent.id, agent);
       return;
     }
+
+    case "project.created":
+    case "project.updated": {
+      const p = e.data as ApiProject;
+      if (p?.id) upsertProject(p);
+      return;
+    }
   }
 }
 
@@ -722,6 +1077,76 @@ function handleEvent(e: RealtimeEvent) {
 
 export const activeConversationId = () =>
   state.activeAgentId ? state.conversationOf[state.activeAgentId] : undefined;
+
+// ── projects ──────────────────────────────────────────────────────────────
+
+/** The active project, falling back to the default if the id ever dangles. */
+export const activeProject = (): Project =>
+  state.projects.find((p) => p.id === state.activeProjectId) ??
+  state.projects[0] ??
+  HOME_PROJECT;
+
+/** On the rail's home tile — the whole company rather than one project's slice. */
+export const atHome = (): boolean => activeProject().allAgents === true;
+
+/** Real projects, in rail order. Home is a tile of its own, not one of these. */
+export const railProjects = (): Project[] => state.projects.filter((p) => !p.allAgents);
+
+/** An agent's project membership. The system agent is always in scope — it is
+ *  how you build any team, so it belongs to every project. */
+export const isProjectMember = (project: Project, agent: Agent): boolean =>
+  agent.role === "system" || project.allAgents === true || project.team.includes(agent.id);
+
+/**
+ * Unread waiting in a project — the rail tile's badge.
+ *
+ * The sum over its team, and the system agent is deliberately left out: it
+ * belongs to every project, so counting it would light up every tile at once
+ * for one message.
+ */
+export const projectUnread = (project: Project): number =>
+  state.agents.reduce(
+    (n, a) =>
+      a.role !== "system" && isProjectMember(project, a) ? n + (state.unread[a.id] ?? 0) : n,
+    0,
+  );
+
+/**
+ * The tasks in view: everything at home, this project's work inside a project.
+ *
+ * A task carries a project only when a lead dispatched it for one, so org-level
+ * work lives at home and appears in no project. That's deliberate — inferring
+ * membership from the assignee would smear a shared agent's work across every
+ * project it happens to be staffed on, and a board you can't trust is worse
+ * than a board that admits what it knows.
+ */
+export const scopedTasks = (): Task[] => {
+  const all = Object.values(state.tasks);
+  if (atHome()) return all;
+  return all.filter((t) => t.project_id === state.activeProjectId);
+};
+
+/** Unread across the whole company — the home tile's badge. */
+export const homeUnread = (): number =>
+  state.agents.reduce((n, a) => n + (state.unread[a.id] ?? 0), 0);
+
+/** The roster scoped to the active project — what the sidebar's AGENTS list and
+ *  the conversations beneath it are filtered to. */
+export const projectAgents = (): Agent[] => {
+  const p = activeProject();
+  if (p.allAgents) return state.agents;
+  return state.agents.filter((a) => isProjectMember(p, a));
+};
+
+/** Resolve an agent id to its record — for lead and team-avatar rendering. */
+export const agentById = (id: string | null | undefined): Agent | undefined =>
+  id ? state.agents.find((a) => a.id === id) : undefined;
+
+/** A project's members as agent records, in roster order. */
+export const projectTeam = (project: Project): Agent[] =>
+  project.allAgents
+    ? state.agents.filter((a) => a.role !== "system")
+    : state.agents.filter((a) => project.team.includes(a.id));
 
 export const activeMessages = (): Message[] => {
   const id = activeConversationId();

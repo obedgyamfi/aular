@@ -1,5 +1,6 @@
-import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
-import { Icon } from "@opencode-ai/ui/icon";
+import { createResource, createSignal, For, Show } from "solid-js";
+import type { JSX } from "solid-js";
+import { Building2, ChevronRight, FileText, Lock, Pencil, Plus, Trash2, Upload } from "lucide-solid";
 
 import { Avatar } from "~/components/avatar";
 import { confirmDialog } from "~/components/confirm";
@@ -11,17 +12,18 @@ import type { OrgDocument } from "~/lib/types";
 /**
  * The knowledge bank — the organization's memory.
  *
- * The roadmap everything serves, the specs and processes the whole team works
- * from, and each agent's role document. All of it is injected into agent
- * prompts, and agents write back here themselves — so this is a window onto a
- * store they share, not a folder of notes.
+ * The documents the whole team works from, plus each agent's role document. All
+ * of it is injected into agent prompts, and agents write back here themselves —
+ * so this is a window onto a store they share, not a folder of notes.
  *
- * Two panes: the bank on the left, one document open on the right. A document
- * opens *reading* — rendered, like the page it is — and an Edit button turns it
- * back into text. The old way (always-on markdown editor, native dropdowns)
- * made the org's memory feel like editing a config file.
+ * Two panes on the design's surface cards: the shelf on the left, one document
+ * open on the right. A document opens *reading* — rendered, like the page it is
+ * — and Edit turns it back into text. Adding is deliberately minimal: a name
+ * and its contents, nothing else. Whatever the doc *is* (a process, a spec, a
+ * set of notes) is carried by what you name it. Roadmaps aren't authored here —
+ * the agents own those, and they live in their own view.
  */
-const KINDS = ["doc", "spec", "process", "roadmap", "report"] as const;
+const EXAMPLES = ["Launch process", "Brand voice", "Audience research", "Meeting notes"];
 
 export function OrgDocs() {
   const [docs, { refetch }] = createResource(() =>
@@ -30,53 +32,102 @@ export function OrgDocs() {
 
   const [selected, setSelected] = createSignal<OrgDocument | null>(null);
   const [editing, setEditing] = createSignal(false);
+  // A file dropped or picked seeds the editor (name + contents) for review,
+  // rather than landing silently — the same surface as the typing flow.
+  const [seed, setSeed] = createSignal<{ title: string; content: string } | null>(null);
   const [error, setError] = createSignal("");
   let picker: HTMLInputElement | undefined;
-
-  const roadmap = () =>
-    (docs() ?? []).find((d) => !d.agent_profile_id && d.kind === "roadmap");
-  const orgDocs = () =>
-    (docs() ?? []).filter((d) => !d.agent_profile_id && d.kind !== "roadmap");
-  const roleDocs = () => (docs() ?? []).filter((d) => !!d.agent_profile_id);
 
   const agentName = (id?: string | null) =>
     state.agents.find((a) => a.id === id)?.name ?? "(removed agent)";
 
+  // Roadmaps are the agents' to author and live in their own kanban/gantt view;
+  // everything else is the bank, grouped by owner: an Organization group (the
+  // shared, org-wide docs) plus one collapsible group per agent that has files.
+  const bankDocs = () => (docs() ?? []).filter((d) => d.kind !== "roadmap");
+  const orgDocs = () => bankDocs().filter((d) => !d.agent_profile_id);
+  const agentGroups = () => {
+    const byAgent = new Map<string, OrgDocument[]>();
+    for (const d of bankDocs()) {
+      if (!d.agent_profile_id) continue;
+      const list = byAgent.get(d.agent_profile_id) ?? [];
+      list.push(d);
+      byAgent.set(d.agent_profile_id, list);
+    }
+    // Roster order first, then any docs whose agent was removed.
+    const groups: { id: string; name: string; docs: OrgDocument[] }[] = [];
+    for (const a of state.agents) {
+      const list = byAgent.get(a.id);
+      if (list?.length) {
+        groups.push({ id: a.id, name: a.name, docs: list });
+        byAgent.delete(a.id);
+      }
+    }
+    for (const [id, list] of byAgent) {
+      groups.push({ id, name: agentName(id), docs: list });
+    }
+    return groups;
+  };
+
+  // Which groups are expanded. The Organization group opens by default; opening
+  // a document expands its group so the shelf never hides what you're reading.
+  const [expanded, setExpanded] = createSignal<Record<string, boolean>>({ org: true });
+  const isExpanded = (key: string) => !!expanded()[key];
+  const toggleGroup = (key: string) => setExpanded((e) => ({ ...e, [key]: !e[key] }));
+
   const open = (d: OrgDocument) => {
     setSelected(d);
     setEditing(false);
+    setSeed(null);
+    const key = d.agent_profile_id ?? "org";
+    setExpanded((e) => (e[key] ? e : { ...e, [key]: true }));
   };
 
-  /** Markdown you already wrote belongs in the bank without a copy-paste. */
-  const upload = async (file?: File) => {
+  const startNew = () => {
+    setSelected(null);
+    setSeed(null);
+    setEditing(true);
+  };
+
+  /** A markdown/text file belongs in the bank without a copy-paste. It opens
+      the editor prefilled — name from the filename, contents from the file. */
+  const fromFile = async (file?: File) => {
     if (!file) return;
     setError("");
     try {
       const content = await file.text();
       const title = file.name.replace(/\.(md|markdown|txt)$/i, "");
-      const doc = await api.upsertDocument({ title, kind: "doc", content });
-      await refetch();
-      open(doc);
+      setSelected(null);
+      setSeed({ title, content });
+      setEditing(true);
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
   return (
-    <div class="flex min-h-0 min-w-0 flex-1">
-      <aside class="flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-v2-border-border-muted">
-        <div class="flex h-11 shrink-0 items-center gap-1 px-3">
-          <span class="min-w-0 flex-1 text-[13px] font-medium text-v2-text-text-base">
-            Knowledge bank
-          </span>
-
+    <div class="flex min-h-0 flex-1 gap-3.5 p-6">
+      {/* ── the shelf ── */}
+      <aside
+        class="flex w-[248px] shrink-0 flex-col overflow-hidden rounded-[var(--r4)] border border-[var(--line)] bg-[var(--surface)]"
+        style={{ "box-shadow": "var(--shadow-1)" }}
+      >
+        <div class="flex shrink-0 items-center gap-1.5 border-b border-[var(--line)] p-2.5">
+          <button
+            type="button"
+            onClick={startNew}
+            class="flex flex-1 items-center gap-1.5 rounded-[var(--r2)] border border-[var(--line)] px-2.5 py-[7px] text-[12px] font-[650] text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-text)]"
+          >
+            <Plus size={14} stroke-width={2} />
+            New document
+          </button>
           <input
             ref={picker}
             type="file"
             accept=".md,.markdown,.txt,text/*"
             class="hidden"
             onChange={(e) => {
-              void upload(e.currentTarget.files?.[0]);
+              void fromFile(e.currentTarget.files?.[0]);
               e.currentTarget.value = "";
             }}
           />
@@ -84,137 +135,141 @@ export function OrgDocs() {
             type="button"
             title="Upload a markdown or text file"
             onClick={() => picker?.click()}
-            class="flex size-6 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base"
+            class="grid size-[30px] flex-none place-items-center rounded-[var(--r2)] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
           >
-            <Icon name="cloud-upload" size="small" />
-          </button>
-          <button
-            type="button"
-            title="New document"
-            onClick={() => {
-              setSelected(null);
-              setEditing(true);
-            }}
-            class="flex size-6 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base"
-          >
-            <Icon name="plus-small" size="small" />
+            <Upload size={15} stroke-width={2} />
           </button>
         </div>
 
         <Show when={error()}>
-          <p class="px-3 pb-1 text-[11px] text-v2-state-fg-danger">{error()}</p>
+          <p class="px-3 pt-2 text-[11px] text-[var(--red)]">{error()}</p>
         </Show>
 
-        <div class="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-3">
-          <Section label="Roadmap" />
-          <Show
-            when={roadmap()}
-            fallback={
-              <p class="px-2 py-1 text-[11px] leading-relaxed text-v2-text-text-faint">
-                None yet. Write one (kind “roadmap”) and every agent reads it
-                first.
-              </p>
-            }
+        <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+          <Group
+            label="Organization"
+            count={orgDocs().length}
+            open={isExpanded("org")}
+            onToggle={() => toggleGroup("org")}
+            icon={<Building2 size={15} stroke-width={1.9} />}
           >
-            {(r) => (
-              <DocRow
-                doc={r()}
-                active={selected()?.id === r().id}
-                onClick={() => open(r())}
-              />
-            )}
-          </Show>
+            <For each={orgDocs()} fallback={<Empty>No shared documents yet.</Empty>}>
+              {(d) => (
+                <DocRow doc={d} active={selected()?.id === d.id} onClick={() => open(d)} />
+              )}
+            </For>
+          </Group>
 
-          <Section label="Org documents" />
-          <For
-            each={orgDocs()}
-            fallback={
-              <p class="px-2 py-1 text-[11px] text-v2-text-text-faint">None yet.</p>
-            }
-          >
-            {(d) => (
-              <DocRow doc={d} active={selected()?.id === d.id} onClick={() => open(d)} />
-            )}
-          </For>
-
-          <Section label="Role documents" />
-          <For
-            each={roleDocs()}
-            fallback={
-              <p class="px-2 py-1 text-[11px] text-v2-text-text-faint">None yet.</p>
-            }
-          >
-            {(d) => (
-              <DocRow
-                doc={d}
-                subtitle={agentName(d.agent_profile_id)}
-                active={selected()?.id === d.id}
-                onClick={() => open(d)}
-              />
+          <For each={agentGroups()}>
+            {(g) => (
+              <Group
+                label={g.name}
+                count={g.docs.length}
+                open={isExpanded(g.id)}
+                onToggle={() => toggleGroup(g.id)}
+                avatar={g.name}
+              >
+                <For each={g.docs}>
+                  {(d) => (
+                    <DocRow doc={d} active={selected()?.id === d.id} onClick={() => open(d)} />
+                  )}
+                </For>
+              </Group>
             )}
           </For>
         </div>
       </aside>
 
-      <Show
-        when={editing() || selected()}
-        fallback={
-          <div class="flex min-w-0 flex-1 items-center justify-center px-8 text-center">
-            <div class="max-w-[440px]">
-              <p class="text-[13px] font-medium text-v2-text-text-base">
-                The organization's memory
-              </p>
-              <p class="pt-1.5 text-[11.5px] leading-relaxed text-v2-text-text-muted">
-                Everything here goes into your agents' context: the roadmap they
-                work toward, the specs and processes they share, and each agent's
-                role document. They write back to it as they work — and you can
-                add or upload documents any time.
-              </p>
-            </div>
-          </div>
-        }
+      {/* ── reader / editor / empty ── */}
+      <section
+        class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--r4)] border border-[var(--line)] bg-[var(--surface)]"
+        style={{ "box-shadow": "var(--shadow-1)" }}
       >
-        <Show
-          when={editing()}
-          fallback={
-            <DocView
-              doc={selected()!}
-              scopeName={
-                selected()!.agent_profile_id
-                  ? agentName(selected()!.agent_profile_id)
-                  : undefined
-              }
-              onEdit={() => setEditing(true)}
-              onDeleted={async () => {
+        <Show when={editing() || selected()} fallback={<EmptyState onNew={startNew} />}>
+          <Show
+            when={editing()}
+            fallback={
+              <DocView
+                doc={selected()!}
+                scopeName={
+                  selected()!.agent_profile_id
+                    ? agentName(selected()!.agent_profile_id)
+                    : undefined
+                }
+                onEdit={() => setEditing(true)}
+                onDeleted={async () => {
+                  await refetch();
+                  setSelected(null);
+                }}
+              />
+            }
+          >
+            <DocEditor
+              doc={selected()}
+              seed={seed()}
+              onSaved={async (d) => {
                 await refetch();
-                setSelected(null);
+                open(d);
+              }}
+              onCancel={() => {
+                setEditing(false);
+                setSeed(null);
               }}
             />
-          }
-        >
-          <DocEditor
-            doc={selected()}
-            onSaved={async (d) => {
-              await refetch();
-              open(d);
-            }}
-            onCancel={() => {
-              // A new draft has nothing to fall back to; a doc reopens as a page.
-              setEditing(false);
-            }}
-          />
+          </Show>
         </Show>
+      </section>
+    </div>
+  );
+}
+
+/** A collapsible owner group in the shelf — the Organization bank or one
+ *  agent's files. The header toggles; the document list sits under a hairline. */
+function Group(props: {
+  label: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  icon?: JSX.Element;
+  avatar?: string;
+  children: JSX.Element;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={props.open}
+        onClick={props.onToggle}
+        class="flex w-full items-center gap-1.5 rounded-[var(--r2)] px-1.5 py-[7px] text-left transition-colors hover:bg-[var(--element-hover)]"
+      >
+        <ChevronRight
+          size={14}
+          stroke-width={2.2}
+          class="flex-none text-[var(--muted)]"
+          style={{ transform: props.open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+        />
+        <Show
+          when={props.avatar}
+          fallback={<span class="flex-none text-[var(--muted)]">{props.icon}</span>}
+        >
+          <Avatar name={props.avatar!} size={18} />
+        </Show>
+        <span class="min-w-0 flex-1 truncate text-[12px] font-[650] text-[var(--text)]">
+          {props.label}
+        </span>
+        <span class="flex-none text-[11px] text-[var(--faint)]">{props.count}</span>
+      </button>
+      <Show when={props.open}>
+        <div class="mb-1 ml-[13px] flex flex-col gap-px border-l border-[var(--line)] pl-1.5 pt-0.5">
+          {props.children}
+        </div>
       </Show>
     </div>
   );
 }
 
-function Section(props: { label: string }) {
-  return (
-    <div class="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
-      {props.label}
-    </div>
-  );
+function Empty(props: { children: any }) {
+  return <p class="px-2 py-1 text-[11px] text-[var(--faint)]">{props.children}</p>;
 }
 
 function DocRow(props: {
@@ -229,16 +284,31 @@ function DocRow(props: {
       type="button"
       aria-current={props.active}
       onClick={props.onClick}
-      class="flex w-full flex-col rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover aria-[current=true]:bg-v2-overlay-simple-overlay-pressed"
+      class="flex w-full items-center gap-2 rounded-[var(--r2)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--element-hover)] aria-[current=true]:bg-[var(--element)]"
     >
-      <span class="truncate text-[12px] text-v2-text-text-base">{d().title}</span>
-      <span class="truncate text-[10.5px] text-v2-text-text-faint">
-        {cap(d().kind)}
-        {props.subtitle ? ` · ${props.subtitle}` : ""} ·{" "}
-        {new Date(d().updated_at).toLocaleDateString([], {
-          month: "short",
-          day: "numeric",
-        })}
+      {/* Role documents carry the agent's avatar; plain documents get a file
+          icon so the shelf reads as a set of files. */}
+      <Show
+        when={props.subtitle}
+        fallback={
+          <span class="flex-none text-[var(--muted)]">
+            <FileText size={15} stroke-width={1.9} />
+          </span>
+        }
+      >
+        <Avatar name={props.subtitle!} size={18} />
+      </Show>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-[12.5px] text-[var(--text)]">
+          {d().title || "Untitled"}
+        </span>
+        <span class="block truncate text-[11px] text-[var(--faint)]">
+          {props.subtitle ? `${props.subtitle} · ` : ""}
+          {new Date(d().updated_at).toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
       </span>
     </button>
   );
@@ -272,39 +342,41 @@ function DocView(props: {
 
   return (
     <div class="flex min-w-0 flex-1 flex-col overflow-y-auto">
-      <div class="mx-auto w-full max-w-[760px] px-8 py-6">
+      <div class="mx-auto w-full max-w-[720px] px-10 py-8">
         <div class="flex items-start gap-3">
-          <h1 class="min-w-0 flex-1 text-[17px] font-semibold leading-snug text-v2-text-text-base">
-            {props.doc.title}
+          <h1
+            class="min-w-0 flex-1 text-[21px] font-semibold leading-snug text-[var(--text)]"
+            style={{ "font-family": "var(--serif)" }}
+          >
+            {props.doc.title || "Untitled"}
           </h1>
-          <div class="flex shrink-0 items-center gap-1 pt-0.5">
+          <div class="flex shrink-0 items-center gap-1.5 pt-1">
             <button
               type="button"
               onClick={props.onEdit}
-              class="flex items-center gap-1.5 rounded-md border border-v2-border-border-base px-2.5 py-1.5 text-[12px] font-medium text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
+              class="inline-flex items-center gap-1.5 rounded-[var(--r2)] border border-[var(--line)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--element-hover)]"
             >
-              <Icon name="pencil-line" size="small" />
+              <Pencil size={13} stroke-width={2} />
               Edit
             </button>
             <button
               type="button"
               title="Delete document"
               onClick={remove}
-              class="flex size-8 items-center justify-center rounded-md text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-state-fg-danger"
+              class="grid size-8 place-items-center rounded-[var(--r2)] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--red)]"
             >
-              <Icon name="trash" size="small" />
+              <Trash2 size={14} stroke-width={2} />
             </button>
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 pt-2.5 text-[11px] text-v2-text-text-faint">
-          <KindPill kind={props.doc.kind} />
+        <div class="flex flex-wrap items-center gap-2 pt-3 text-[11px] text-[var(--faint)]">
           <Show
             when={props.scopeName}
-            fallback={<span class="text-v2-text-text-muted">Org-wide</span>}
+            fallback={<span class="text-[var(--muted)]">Org-wide</span>}
           >
-            <span class="flex items-center gap-1.5 text-v2-text-text-muted">
-              <Avatar name={props.scopeName!} size={15} />
+            <span class="flex items-center gap-1.5 text-[var(--muted)]">
+              <Avatar name={props.scopeName!} size={16} />
               {props.scopeName}
             </span>
           </Show>
@@ -321,14 +393,14 @@ function DocView(props: {
         </div>
 
         <Show when={error()}>
-          <p class="pt-3 text-[11.5px] text-v2-state-fg-danger">{error()}</p>
+          <p class="pt-3 text-[11.5px] text-[var(--red)]">{error()}</p>
         </Show>
 
-        <div class="pt-5 text-[13px]">
+        <div class="pt-6">
           <Show
             when={props.doc.content.trim()}
             fallback={
-              <p class="text-[12px] italic text-v2-text-text-faint">
+              <p class="text-[12.5px] italic text-[var(--faint)]">
                 Empty — edit it to give your agents something to read.
               </p>
             }
@@ -341,18 +413,23 @@ function DocView(props: {
   );
 }
 
-/** The same document, being written. */
+/**
+ * The same document, being written — a name and its contents, nothing else.
+ * The body doubles as a drop zone, so typing and upload share one surface.
+ */
 function DocEditor(props: {
   doc: OrgDocument | null;
+  seed: { title: string; content: string } | null;
   onSaved: (d: OrgDocument) => void;
   onCancel: () => void;
 }) {
-  const [title, setTitle] = createSignal(props.doc?.title ?? "");
-  const [kind, setKind] = createSignal(props.doc?.kind ?? "doc");
-  const [scope, setScope] = createSignal(props.doc?.agent_profile_id ?? "");
-  const [content, setContent] = createSignal(props.doc?.content ?? "");
+  const [title, setTitle] = createSignal(props.doc?.title ?? props.seed?.title ?? "");
+  const [content, setContent] = createSignal(
+    props.doc?.content ?? props.seed?.content ?? "",
+  );
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal("");
+  const [dragging, setDragging] = createSignal(false);
 
   const save = async () => {
     if (!title().trim() || saving()) return;
@@ -360,9 +437,13 @@ function DocEditor(props: {
     setError("");
     try {
       const saved = await api.upsertDocument({
-        ...(scope() ? { agent_profile_id: scope() } : {}),
+        // Editing an existing doc keeps its scope and kind so the upsert lands
+        // on the same record; a new doc is an org-wide plain document.
+        ...(props.doc?.agent_profile_id
+          ? { agent_profile_id: props.doc.agent_profile_id }
+          : {}),
         title: title().trim(),
-        kind: kind(),
+        kind: props.doc?.kind ?? "doc",
         content: content(),
       });
       props.onSaved(saved);
@@ -372,167 +453,134 @@ function DocEditor(props: {
     }
   };
 
-  return (
-    <div class="flex min-w-0 flex-1 flex-col">
-      <div class="shrink-0 border-b border-v2-border-border-muted px-6 py-3">
-        <div class="flex items-center gap-3">
-          <input
-            value={title()}
-            onInput={(e) => setTitle(e.currentTarget.value)}
-            placeholder="Document title"
-            class="min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
-          />
-          <div class="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={props.onCancel}
-              class="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={!title().trim() || saving()}
-              class="rounded-md bg-v2-background-bg-accent px-3 py-1.5 text-[12px] font-medium text-v2-text-text-inverse transition-opacity disabled:opacity-50"
-            >
-              {saving() ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-3 pt-2.5">
-          {/* What kind of page this is — five choices don't need a dropdown. */}
-          <div class="flex items-center gap-px overflow-hidden rounded-md border border-v2-border-border-muted">
-            <For each={KINDS}>
-              {(k) => (
-                <button
-                  type="button"
-                  onClick={() => setKind(k)}
-                  aria-pressed={kind() === k}
-                  class="px-2.5 py-1 text-[11px] transition-colors"
-                  classList={{
-                    "bg-v2-overlay-simple-overlay-pressed font-medium text-v2-text-text-base":
-                      kind() === k,
-                    "text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base":
-                      kind() !== k,
-                  }}
-                >
-                  {cap(k)}
-                </button>
-              )}
-            </For>
-          </div>
-
-          <ScopeMenu value={scope()} onChange={setScope} />
-        </div>
-
-        <Show when={error()}>
-          <p class="pt-2 text-[11.5px] text-v2-state-fg-danger">{error()}</p>
-        </Show>
-      </div>
-
-      <textarea
-        value={content()}
-        onInput={(e) => setContent(e.currentTarget.value)}
-        placeholder="Markdown — the roadmap, a spec, a process. This text goes into your agents' prompts, so write what they must know."
-        class="min-h-0 flex-1 resize-none bg-transparent px-6 py-4 font-mono text-[12px] leading-relaxed text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
-      />
-    </div>
-  );
-}
-
-/** Who reads this: the whole org, or one agent. A designed menu, not a <select>. */
-function ScopeMenu(props: { value: string; onChange: (id: string) => void }) {
-  const [open, setOpen] = createSignal(false);
-  let root: HTMLDivElement | undefined;
-
-  const onDown = (e: PointerEvent) => {
-    if (!root?.contains(e.target as Node)) setOpen(false);
+  const onDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setContent(text);
+      if (!title().trim()) setTitle(file.name.replace(/\.(md|markdown|txt)$/i, ""));
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
-  document.addEventListener("pointerdown", onDown);
-  onCleanup(() => document.removeEventListener("pointerdown", onDown));
-
-  const staff = () => state.agents.filter((a) => a.role !== "system");
-  const current = () => state.agents.find((a) => a.id === props.value);
 
   return (
-    <div ref={root} class="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open()}
-        class="flex items-center gap-1.5 rounded-md border border-v2-border-border-muted px-2.5 py-1 text-[11px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
-      >
-        <Show when={current()} fallback={<span>Org-wide</span>}>
-          {(a) => (
-            <span class="flex items-center gap-1.5">
-              <Avatar name={a().name} size={14} />
-              {a().name}
-            </span>
-          )}
-        </Show>
-        <Icon name="chevron-down" size="small" />
-      </button>
+    <div class="flex min-w-0 flex-1 flex-col overflow-y-auto">
+      <div class="mx-auto flex w-full max-w-[720px] flex-1 flex-col px-10 py-8">
+        <div class="flex items-center gap-2">
+          <span class="flex-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--muted)]">
+            {props.doc ? "Editing" : "New document"}
+          </span>
+          <button
+            type="button"
+            onClick={props.onCancel}
+            class="rounded-[var(--r2)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!title().trim() || saving()}
+            onClick={() => void save()}
+            class="rounded-[var(--r2)] bg-[var(--text)] px-3.5 py-1.5 text-[12px] font-[650] text-[var(--bg)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--on-accent)] disabled:opacity-40"
+          >
+            {saving() ? "Saving…" : "Save document"}
+          </button>
+        </div>
 
-      <Show when={open()}>
-        <div class="aular-pop absolute left-0 top-full z-40 mt-1 max-h-[240px] w-[200px] overflow-y-auto rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
-          <ScopeItem
-            label="Org-wide"
-            active={!props.value}
-            onClick={() => {
-              props.onChange("");
-              setOpen(false);
-            }}
-          />
-          <For each={staff()}>
-            {(a) => (
-              <ScopeItem
-                label={a.name}
-                avatar
-                active={props.value === a.id}
+        <input
+          value={title()}
+          onInput={(e) => setTitle(e.currentTarget.value)}
+          placeholder="Name this document"
+          autofocus
+          class="mt-5 w-full bg-transparent text-[21px] font-semibold leading-snug text-[var(--text)] outline-none placeholder:text-[var(--faint)]"
+          style={{ "font-family": "var(--serif)" }}
+        />
+
+        {/* A hint, not a picker: name it after whatever it is. */}
+        <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <span class="text-[11.5px] text-[var(--muted)]">Name it whatever it is —</span>
+          <For each={EXAMPLES}>
+            {(ex) => (
+              <button
+                type="button"
                 onClick={() => {
-                  props.onChange(a.id);
-                  setOpen(false);
+                  if (!title().trim()) setTitle(ex);
                 }}
-              />
+                class="rounded-[var(--pill)] border border-[var(--line)] px-2.5 py-[3px] text-[11px] text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-text)]"
+              >
+                {ex}
+              </button>
             )}
           </For>
         </div>
-      </Show>
+
+        <div
+          class="mt-4 flex min-h-0 flex-1 flex-col rounded-[var(--r3)] border transition-colors"
+          classList={{
+            "border-[var(--accent)] bg-[var(--accent-soft)]": dragging(),
+            "border-[var(--line)]": !dragging(),
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            // Ignore leaves into child nodes — only the real exit clears it.
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+          }}
+          onDrop={(e) => void onDrop(e)}
+        >
+          <textarea
+            value={content()}
+            onInput={(e) => setContent(e.currentTarget.value)}
+            placeholder="Start typing the contents — or drop a .md or .txt file here."
+            class="min-h-[200px] flex-1 resize-none bg-transparent px-4 py-3.5 text-[13px] leading-[1.7] text-[var(--text)] outline-none placeholder:text-[var(--faint)]"
+          />
+        </div>
+
+        <Show when={error()}>
+          <p class="pt-2.5 text-[11.5px] text-[var(--red)]">{error()}</p>
+        </Show>
+
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
+          <Lock size={12} stroke-width={2} />
+          Saved to the shared bank — your agents read it before their turn.
+        </div>
+      </div>
     </div>
   );
 }
 
-function ScopeItem(props: {
-  label: string;
-  avatar?: boolean;
-  active: boolean;
-  onClick: () => void;
-}) {
+function EmptyState(props: { onNew: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-v2-text-text-base transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-    >
-      <Show when={props.avatar}>
-        <Avatar name={props.label} size={16} />
-      </Show>
-      <span class="min-w-0 flex-1 truncate">{props.label}</span>
-      <Show when={props.active}>
-        <Icon name="check-small" size="small" />
-      </Show>
-    </button>
+    <div class="flex min-w-0 flex-1 flex-col items-center justify-center px-8 text-center">
+      <div class="max-w-[440px]">
+        <div class="mx-auto grid size-11 place-items-center rounded-[var(--r3)] bg-[var(--element)] text-[var(--muted)]">
+          <FileText size={20} stroke-width={1.8} />
+        </div>
+        <p
+          class="mt-4 text-[15px] font-semibold text-[var(--text)]"
+          style={{ "font-family": "var(--serif)" }}
+        >
+          The organization's memory
+        </p>
+        <p class="mt-1.5 text-[12.5px] leading-relaxed text-[var(--muted)]">
+          Everything here goes into your agents' context — the documents and notes
+          they share and write back to. Pick one to read, or add your own.
+        </p>
+        <button
+          type="button"
+          onClick={props.onNew}
+          class="mt-4 inline-flex items-center gap-1.5 rounded-[var(--r2)] bg-[var(--text)] px-3.5 py-[9px] text-[12.5px] font-[650] text-[var(--bg)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--on-accent)]"
+        >
+          <Plus size={15} stroke-width={2} />
+          New document
+        </button>
+      </div>
+    </div>
   );
 }
-
-function KindPill(props: { kind: string }) {
-  return (
-    <span class="rounded-full bg-v2-background-bg-layer-02 px-2 py-0.5 text-[10.5px] font-medium text-v2-text-text-muted">
-      {cap(props.kind)}
-    </span>
-  );
-}
-
-const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);

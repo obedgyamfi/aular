@@ -20,20 +20,22 @@ export const windowControls = {
   startDragging: () => void win()?.startDragging(),
 };
 
-export const sidebarOpen = {
-  // Toggled from the menu and the toolbar button; the shell reads it.
-  value: true,
-};
-
 type Listener = () => void;
-const listeners = new Set<Listener>();
-export function onSidebarToggle(fn: Listener) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+
+/**
+ * Put the cursor in the composer — what the conversation's opening CTA does.
+ *
+ * A bus rather than a field on the store: the draft belongs to the composer's
+ * own editing state, and lifting it into global state would give one string two
+ * owners and a race between them.
+ */
+const composerFocus = new Set<Listener>();
+export function onComposerFocus(fn: Listener) {
+  composerFocus.add(fn);
+  return () => composerFocus.delete(fn);
 }
-export function toggleSidebar() {
-  sidebarOpen.value = !sidebarOpen.value;
-  listeners.forEach((fn) => fn());
+export function focusComposer() {
+  composerFocus.forEach((fn) => fn());
 }
 
 /** Runs a menu action. Editing actions fall through to the webview's own
@@ -45,9 +47,6 @@ export function runMenuAction(action: MenuAction) {
       return;
     case "app.reload":
       window.location.reload();
-      return;
-    case "view.toggleSidebar":
-      toggleSidebar();
       return;
     case "edit.undo":
     case "edit.redo":

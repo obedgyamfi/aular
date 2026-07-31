@@ -15,6 +15,8 @@ export function Modal(props: {
   width?: number;
   onClose: () => void;
   footer?: JSX.Element;
+  /** Skip the padded scroll body — for dialogs that lay out their own panes. */
+  bare?: boolean;
   children: JSX.Element;
 }) {
   const onKey = (e: KeyboardEvent) => {
@@ -32,7 +34,8 @@ export function Modal(props: {
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        class="aular-pop relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
+        class="aular-pop relative flex w-full flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-01 shadow-2xl"
+        classList={{ "max-h-[92vh]": !!props.bare, "max-h-[85vh]": !props.bare }}
         style={{ "max-width": `${props.width ?? 460}px` }}
       >
         <button
@@ -44,14 +47,25 @@ export function Modal(props: {
           <Icon name="close" size="small" />
         </button>
 
-        <div class="min-h-0 flex-1 overflow-y-auto p-5">
-          <Show when={props.title}>
-            <h2 class="mb-3 pr-8 text-[14px] font-medium text-v2-text-text-base">
-              {props.title}
-            </h2>
-          </Show>
+        <Show
+          when={props.bare}
+          fallback={
+            <div class="min-h-0 flex-1 overflow-y-auto p-5">
+              <Show when={props.title}>
+                <h2 class="mb-3 pr-8 text-[14px] font-medium text-v2-text-text-base">
+                  {props.title}
+                </h2>
+              </Show>
+              {props.children}
+            </div>
+          }
+        >
+          {/* No wrapper: one with `flex-1` resolves its basis to 0% and swallows
+              whatever height the dialog's own layout declares, so a bare dialog
+              could never size itself. Its children are flex items of the panel
+              directly. */}
           {props.children}
-        </div>
+        </Show>
 
         <Show when={props.footer}>
           <div class="shrink-0 border-t border-v2-border-border-muted bg-v2-background-bg-layer-01 px-5 py-3">

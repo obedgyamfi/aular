@@ -2,6 +2,7 @@ import type {
   Agent,
   AgentTemplate,
   AnalyticsDaily,
+  ApiProject,
   AuthUser,
   Conversation,
   ConversationContext,
@@ -127,6 +128,19 @@ export const api = {
   markAgentRead: (id: string) => v1<void>(`/agent-profiles/${id}/read`, { method: "POST" }),
 
   listTemplates: () => v1<AgentTemplate[]>("/agent-profile-templates"),
+
+  // ── projects (AULAR creates them via the PROJECT block + names a lead) ──
+  listProjects: () => v1<ApiProject[]>("/projects"),
+  createProject: (input: {
+    name: string;
+    objective?: string;
+    lead_id?: string | null;
+    team?: string[];
+  }) => v1<ApiProject>("/projects", { method: "POST", body: JSON.stringify(input) }),
+  updateProject: (
+    id: string,
+    patch: Partial<{ name: string; objective: string; status: string; priority: string; lead_id: string | null; team: string[] }>,
+  ) => v1<ApiProject>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
   // ── conversations ─────────────────────────────────────────────────────
   listConversations: (agentId?: string) =>

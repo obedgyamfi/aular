@@ -1,19 +1,19 @@
 import { Show } from "solid-js";
 
 import { Avatar } from "~/components/avatar";
-import { Dots } from "~/components/thinking";
-import { settingsActions } from "~/lib/settings";
 import { agentWorking, state } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
 /**
- * A row in the chat list — ported from the prototype's AgentListItem.
+ * A DM row, Discord's shape: a 32px circular portrait with a presence dot ringed
+ * in the sidebar colour, the name, and a red unread badge.
  *
- * Reads like a messenger: avatar, name, the last message flattened to one clean
- * line, the time (clock today, date otherwise), an unread pill, and — while the
- * agent is actually working — animated dots and "typing…" in place of the
- * preview. Unread rows brighten, so pending work reads as new before you even
- * see the pill.
+ * The second line is the *role*, which is Discord's activity line ("/help |
+ * carl.gg") doing the job that matters here: a roster of seventeen agents is
+ * unreadable when every row is just a name. What it is NOT is the last message —
+ * that was tried, and three competing lines per agent turned the list into a
+ * wall. A live agent's "working…" takes the line over while it runs, because
+ * right-now beats what-it-is.
  */
 export function AgentListItem(props: {
   agent: Agent;
@@ -22,131 +22,77 @@ export function AgentListItem(props: {
 }) {
   const agent = () => props.agent;
   const unread = () => state.unread[agent().id] ?? 0;
-  const preview = () => state.preview[agent().id];
   const working = () => agentWorking(agent().id);
-  const muted = () => settingsActions.isMuted(agent().id);
-
-  // Unread and not open: brighter subtitle and time, like a real messenger.
-  const isUnread = () => unread() > 0 && !props.active;
-
-  const subtitle = () => {
-    const p = preview();
-    if (!p) return `${prettyRole(agent().role)} · ${agent().tone || "ready"}`;
-    return (p.sender === "user" ? "You: " : "") + plainPreview(p.text);
-  };
-
-  const time = () => preview()?.at ?? agent().updated_at ?? "";
 
   return (
     <button
       type="button"
       onClick={props.onClick}
       aria-current={props.active}
-      class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-v2-overlay-simple-overlay-hover aria-[current=true]:bg-v2-overlay-simple-overlay-pressed"
+      class="group/dm mb-2 grid h-[46px] w-full grid-cols-[28px_1fr_auto] items-center gap-2 rounded-[var(--r1)] px-2 text-left transition-colors hover:bg-[var(--element-hover)] aria-[current=true]:bg-[var(--element-active)]"
     >
-      <Avatar name={agent().name} size={32} />
+      <span class="relative">
+        <Avatar name={agent().name} size={28} circle />
+        <span
+          class="absolute -bottom-0.5 -left-0.5 size-[10px] rounded-full border-[2px] border-[var(--sidebar)] transition-colors group-hover/dm:border-[var(--element-hover)]"
+          style={{ background: working() ? "var(--green)" : "var(--faint)" }}
+        />
+      </span>
 
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center justify-between gap-2">
-          <span class="flex min-w-0 items-center gap-1">
-            <span class="truncate text-[12.5px] font-medium text-v2-text-text-base">
-              {agent().name}
+      <span class="min-w-0">
+        <span
+          class="mb-px block truncate text-[14px] font-medium leading-5 transition-colors group-hover/dm:text-[var(--text)]"
+          classList={{
+            "text-[var(--text)]": props.active || unread() > 0,
+            "text-[var(--muted)]": !props.active && unread() === 0,
+          }}
+        >
+          {agent().name}
+        </span>
+        <Show
+          when={working()}
+          fallback={
+            <span class="block truncate text-[11px] leading-4 text-[var(--faint)]">
+              {prettyRole(agent().role)}
             </span>
-            <Show when={muted()}>
-              <span class="shrink-0 text-v2-text-text-faint" title="Muted">
-                <MuteIcon />
-              </span>
-            </Show>
+          }
+        >
+          <span class="flex items-center gap-[5px] leading-4">
+            <span class="flex gap-[2px]">
+              <TypeDot delay="0s" />
+              <TypeDot delay=".2s" />
+              <TypeDot delay=".4s" />
+            </span>
+            <span class="text-[10.5px] font-semibold text-[var(--green)]">working…</span>
           </span>
+        </Show>
+      </span>
 
-          <Show when={time()}>
-            <span
-              class="shrink-0 text-[10.5px] tabular-nums"
-              classList={{
-                "text-v2-text-text-accent font-medium": isUnread(),
-                "text-v2-text-text-faint": !isUnread(),
-              }}
-            >
-              {listTime(time())}
-            </span>
-          </Show>
-        </div>
-
-        <div class="mt-0.5 flex items-center gap-2">
-          <Show
-            when={!working()}
-            fallback={
-              <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11.5px]">
-                <Dots />
-                <span class="aular-shimmer font-medium">working</span>
-              </span>
-            }
-          >
-            <span
-              class="min-w-0 flex-1 truncate text-[11.5px]"
-              classList={{
-                "text-v2-text-text-base font-medium": isUnread(),
-                "text-v2-text-text-muted": !isUnread(),
-              }}
-            >
-              {subtitle()}
-            </span>
-          </Show>
-
-          <Show when={unread() > 0 && !working()}>
-            <span
-              class="flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-v2-background-bg-accent px-1 text-[10px] font-semibold text-v2-text-text-inverse"
-              title={`${unread()} unread`}
-            >
-              {unread() > 99 ? "99+" : unread()}
-            </span>
-          </Show>
-        </div>
-      </div>
+      {/* Discord's unread badge: red, not neutral — it's a demand, not a stat. */}
+      <Show when={unread() > 0}>
+        <span class="grid h-4 min-w-4 place-items-center self-center rounded-[var(--pill)] bg-[var(--red)] px-1.5 text-[11px] font-bold text-white">
+          {unread() > 99 ? "99+" : unread()}
+        </span>
+      </Show>
     </button>
   );
 }
 
-
-function MuteIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
-    </svg>
-  );
-}
-
 function prettyRole(role: string): string {
+  if (role === "system") return "System";
   return role
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
 
-/**
- * Flatten a message to one clean line for the list — strip markdown syntax and
- * collapse whitespace, the way a messenger does. Raw markdown in a preview row
- * looks broken.
- */
-function plainPreview(text: string): string {
-  return text
-    .replace(/\s*<<<AULAR_CHUNK>>>\s*/g, " ") // bubble-split markers
-    .replace(/```[\s\S]*?```/g, " ") // fenced code
-    .replace(/`([^`]+)`/g, "$1") // inline code
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1") // links/images → label
-    .replace(/[*_~]/g, "") // emphasis
-    .replace(/^\s{0,3}(#{1,6}|[>\-+*])\s+/gm, "") // headings, quotes, bullets
-    .replace(/\s+/g, " ")
-    .trim();
+function TypeDot(props: { delay: string }) {
+  return (
+    <span
+      class="size-1 rounded-full bg-[var(--green)]"
+      style={{ animation: `typedot 1.2s infinite ${props.delay}` }}
+    />
+  );
 }
 
-/** Clock for today, short date otherwise. */
-function listTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleDateString([], { month: "numeric", day: "numeric" });
-}
+

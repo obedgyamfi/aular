@@ -12,6 +12,10 @@ export default defineConfig({
   },
   // Tauri expects a fixed port and no automatic fallback.
   server: { port: 1420, strictPort: true },
+  // lucide-solid ships ~1600 icons as separate modules and we import it as a
+  // barrel. Without pre-bundling, a cold dev server serves them one request at
+  // a time and wedges the browser hard enough to look like an infinite loop.
+  optimizeDeps: { include: ["lucide-solid"] },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
     target: "esnext",
