@@ -3,6 +3,7 @@ import ArrowDown from "lucide-solid/icons/arrow-down";
 
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";
+import { DelegationCard } from "~/components/delegation-card";
 import { SystemNote } from "~/components/message-body";
 import { MessageRow } from "~/components/message-row";
 import { Thinking } from "~/components/thinking";
@@ -12,11 +13,12 @@ import {
   activeConversationId,
   activeWorking,
   briefsOfConversation,
+  delegationsOfConversation,
   joinChunks,
   state,
 } from "~/lib/store";
 import { focusComposer } from "~/lib/window";
-import type { Agent, Message, ToolCall } from "~/lib/types";
+import type { Agent, Message, Task, ToolCall } from "~/lib/types";
 
 /**
  * The channel timeline — the Slack/Discord shape.
@@ -34,7 +36,8 @@ const GUTTER = "w-10 shrink-0";
 
 type Item =
   | { kind: "message"; at: number; message: Message }
-  | { kind: "tool"; at: number; tool: ToolCall };
+  | { kind: "tool"; at: number; tool: ToolCall }
+  | { kind: "delegation"; at: number; task: Task };
 
 export function MessageList() {
   const agent = () => activeAgent();
@@ -43,7 +46,9 @@ export function MessageList() {
   const [atBottom, setAtBottom] = createSignal(true);
   const [newCount, setNewCount] = createSignal(0);
 
-  // Messages and tool calls, one timeline, ordered by when they happened.
+  // Messages, tool calls and hand-offs — one timeline, ordered by when they
+  // happened, so an agent's work is legible in place rather than split across
+  // a transcript here and a status chip somewhere else.
   const items = createMemo<Item[]>(() => {
     const convoId = activeConversationId();
     if (!convoId) return [];
@@ -55,7 +60,12 @@ export function MessageList() {
       at: Date.parse(t.created_at),
       tool: t,
     }));
-    return [...msgs, ...tools].sort((a, b) => a.at - b.at);
+    const delegations = delegationsOfConversation(convoId).map((t) => ({
+      kind: "delegation" as const,
+      at: Date.parse(t.created_at),
+      task: t,
+    }));
+    return [...msgs, ...tools, ...delegations].sort((a, b) => a.at - b.at);
   });
 
   const byId = createMemo(() => {
@@ -161,6 +171,18 @@ export function MessageList() {
                         <div class={GUTTER} />
                         <div class="min-w-0 flex-1">
                           <ToolCard tool={(it as Extract<Item, { kind: "tool" }>).tool} />
+                        </div>
+                      </div>
+                    </Show>
+
+                    <Show when={it.kind === "delegation"}>
+                      {/* A hand-off to a teammate, in the same column. */}
+                      <div class="mx-1 flex gap-2.5 px-2 py-1">
+                        <div class={GUTTER} />
+                        <div class="min-w-0 flex-1">
+                          <DelegationCard
+                            task={(it as Extract<Item, { kind: "delegation" }>).task}
+                          />
                         </div>
                       </div>
                     </Show>
@@ -376,7 +398,7 @@ export function isEmptyExhaust(m: Message, streaming: boolean): boolean {
  * or a "dispatch landed" note starts a fresh run with its portrait back.
  */
 const sideOf = (it: Item): "user" | "agent" | "system" | "tool" => {
-  if (it.kind === "tool") return "tool";
+  if (it.kind === "tool" || it.kind === "delegation") return "tool";
   if (it.message.sender_type === "user") return "user";
   if (it.message.sender_type === "system") return "system";
   return "agent";

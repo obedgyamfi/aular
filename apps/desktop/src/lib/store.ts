@@ -1364,6 +1364,22 @@ export const liveTasks = (): Task[] =>
     .filter((t) => !TERMINAL_TASK_STATES.has(t.state))
     .sort((a, b) => taskTouchedAt(b).localeCompare(taskTouchedAt(a)));
 
+/**
+ * Every hand-off made from this thread, in any state.
+ *
+ * Not `liveTasks`: a delegation belongs to the conversation's history the same
+ * way a message does, so a finished one stays readable instead of vanishing
+ * the moment it completes. Oldest first — the timeline interleaves by time.
+ */
+export const delegationsOfConversation = (conversationId: string): Task[] =>
+  Object.values(state.tasks)
+    .filter(
+      (t) =>
+        t.from_conversation_id === conversationId &&
+        t.to_conversation_id !== conversationId,
+    )
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+
 /** The human's inbox: everything paused on a person. */
 export const inputRequiredTasks = (): Task[] =>
   liveTasks().filter((t) => t.state === "input-required");
