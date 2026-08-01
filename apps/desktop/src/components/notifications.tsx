@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import { Bell as BellIcon } from "lucide-solid";
+import BellIcon from "lucide-solid/icons/bell";
 
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";

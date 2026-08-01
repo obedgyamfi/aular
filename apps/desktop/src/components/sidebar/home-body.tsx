@@ -1,4 +1,7 @@
-import { BookOpen, CalendarDays, Network, SquareKanban } from "lucide-solid";
+import BookOpen from "lucide-solid/icons/book-open";
+import CalendarDays from "lucide-solid/icons/calendar-days";
+import Network from "lucide-solid/icons/network";
+import SquareKanban from "lucide-solid/icons/square-kanban";
 
 import { AgentsSection, ChannelSection, NavRow } from "~/components/sidebar/parts";
 import type { Agent } from "~/lib/types";

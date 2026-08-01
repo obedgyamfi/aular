@@ -1,5 +1,5 @@
 import { createMemo, createResource, For, Show } from "solid-js";
-import { X } from "lucide-solid";
+import X from "lucide-solid/icons/x";
 
 import { Avatar } from "~/components/avatar";
 import { Backdrop } from "~/components/backdrop";

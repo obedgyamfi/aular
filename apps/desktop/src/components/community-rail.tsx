@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { Plus } from "lucide-solid";
+import Plus from "lucide-solid/icons/plus";
 
 import { Tooltip } from "~/components/tooltip";
 import { Mark } from "~/components/logo";

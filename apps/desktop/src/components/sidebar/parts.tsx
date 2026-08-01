@@ -1,6 +1,10 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { ChevronDown, ChevronRight, Hash, Plus, Search } from "lucide-solid";
+import ChevronDown from "lucide-solid/icons/chevron-down";
+import ChevronRight from "lucide-solid/icons/chevron-right";
+import Hash from "lucide-solid/icons/hash";
+import Plus from "lucide-solid/icons/plus";
+import Search from "lucide-solid/icons/search";
 
 import { AgentListItem } from "~/components/agent-list-item";
 import { actions, state, type Register } from "~/lib/store";

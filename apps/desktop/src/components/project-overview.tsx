@@ -1,5 +1,8 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { Check, Pencil, Sparkles, X } from "lucide-solid";
+import Check from "lucide-solid/icons/check";
+import Pencil from "lucide-solid/icons/pencil";
+import Sparkles from "lucide-solid/icons/sparkles";
+import X from "lucide-solid/icons/x";
 
 import { Avatar } from "~/components/avatar";
 import type { Proposal } from "~/lib/intent";

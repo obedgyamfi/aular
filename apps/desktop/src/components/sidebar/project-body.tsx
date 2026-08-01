@@ -1,4 +1,8 @@
-import { CalendarDays, ClipboardList, GanttChart, SquareKanban, Users } from "lucide-solid";
+import CalendarDays from "lucide-solid/icons/calendar-days";
+import ClipboardList from "lucide-solid/icons/clipboard-list";
+import GanttChart from "lucide-solid/icons/chart-no-axes-gantt";
+import SquareKanban from "lucide-solid/icons/square-kanban";
+import Users from "lucide-solid/icons/users";
 
 import { AgentsSection, ChannelSection, NavRow } from "~/components/sidebar/parts";
 import type { Agent } from "~/lib/types";

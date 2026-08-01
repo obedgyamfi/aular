@@ -1,5 +1,8 @@
 import { createSignal, For, Show } from "solid-js";
-import { ChevronDown, CircleCheck, Lightbulb, TriangleAlert } from "lucide-solid";
+import ChevronDown from "lucide-solid/icons/chevron-down";
+import CircleCheck from "lucide-solid/icons/circle-check";
+import Lightbulb from "lucide-solid/icons/lightbulb";
+import TriangleAlert from "lucide-solid/icons/triangle-alert";
 
 import { Markdown } from "~/components/markdown";
 import { age } from "~/components/task-state";

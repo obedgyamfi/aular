@@ -1,5 +1,7 @@
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
-import { Plus, Sparkles, X } from "lucide-solid";
+import Plus from "lucide-solid/icons/plus";
+import Sparkles from "lucide-solid/icons/sparkles";
+import X from "lucide-solid/icons/x";
 
 import { Avatar } from "~/components/avatar";
 import { Modal } from "~/components/modal";

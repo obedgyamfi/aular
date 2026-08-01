@@ -1,16 +1,14 @@
 import { createSignal, ErrorBoundary, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import {
-  BrainCircuit,
-  Cpu,
-  Gauge,
-  Info,
-  Palette,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  UserRound,
-} from "lucide-solid";
+import BrainCircuit from "lucide-solid/icons/brain-circuit";
+import Cpu from "lucide-solid/icons/cpu";
+import Gauge from "lucide-solid/icons/gauge";
+import Info from "lucide-solid/icons/info";
+import Palette from "lucide-solid/icons/palette";
+import RefreshCw from "lucide-solid/icons/refresh-cw";
+import Search from "lucide-solid/icons/search";
+import SlidersHorizontal from "lucide-solid/icons/sliders-horizontal";
+import UserRound from "lucide-solid/icons/user-round";
 
 import { avatarGradient, AVATAR_STYLES, portrait, SWATCHES } from "~/components/avatar";
 import { MemoryPanel } from "~/components/memory-panel";

@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
-import { ArrowDown } from "lucide-solid";
+import ArrowDown from "lucide-solid/icons/arrow-down";
 
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";

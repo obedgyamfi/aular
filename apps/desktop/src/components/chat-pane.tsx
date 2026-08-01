@@ -1,6 +1,7 @@
 import { createMemo, createSignal, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
-import { Hash, UserRound } from "lucide-solid";
+import Hash from "lucide-solid/icons/hash";
+import UserRound from "lucide-solid/icons/user-round";
 
 import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";

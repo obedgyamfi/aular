@@ -1,5 +1,7 @@
 import { createMemo, createResource, For, Show } from "solid-js";
-import { MessageSquare, Pencil, X } from "lucide-solid";
+import MessageSquare from "lucide-solid/icons/message-square";
+import Pencil from "lucide-solid/icons/pencil";
+import X from "lucide-solid/icons/x";
 
 import { Avatar } from "~/components/avatar";
 import { StateDot, STATE_META, age } from "~/components/task-state";

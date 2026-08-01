@@ -1,6 +1,13 @@
 import { createResource, createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { Building2, ChevronRight, FileText, Lock, Pencil, Plus, Trash2, Upload } from "lucide-solid";
+import Building2 from "lucide-solid/icons/building-2";
+import ChevronRight from "lucide-solid/icons/chevron-right";
+import FileText from "lucide-solid/icons/file-text";
+import Lock from "lucide-solid/icons/lock";
+import Pencil from "lucide-solid/icons/pencil";
+import Plus from "lucide-solid/icons/plus";
+import Trash2 from "lucide-solid/icons/trash-2";
+import Upload from "lucide-solid/icons/upload";
 
 import { Avatar } from "~/components/avatar";
 import { confirmDialog } from "~/components/confirm";

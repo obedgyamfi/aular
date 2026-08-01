@@ -1,4 +1,4 @@
-import { Settings as SettingsIcon } from "lucide-solid";
+import SettingsIcon from "lucide-solid/icons/settings";
 
 import { Avatar } from "~/components/avatar";
 import { Notifications } from "~/components/notifications";

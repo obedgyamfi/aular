@@ -1,16 +1,14 @@
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
-import {
-  BookOpen,
-  CalendarDays,
-  ClipboardList,
-  GanttChart,
-  Hash,
-  Network,
-  SquareKanban,
-  Users,
-} from "lucide-solid";
+import BookOpen from "lucide-solid/icons/book-open";
+import CalendarDays from "lucide-solid/icons/calendar-days";
+import ClipboardList from "lucide-solid/icons/clipboard-list";
+import GanttChart from "lucide-solid/icons/chart-no-axes-gantt";
+import Hash from "lucide-solid/icons/hash";
+import Network from "lucide-solid/icons/network";
+import SquareKanban from "lucide-solid/icons/square-kanban";
+import Users from "lucide-solid/icons/users";
 
 import { WindowControls } from "~/components/window-controls";
 import { actions, activeAgent, atHome, canGoBack, canGoForward, state } from "~/lib/store";

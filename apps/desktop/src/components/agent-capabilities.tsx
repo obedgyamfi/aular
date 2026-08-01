@@ -8,7 +8,11 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { Plus, Search, Sparkles, Wrench, X } from "lucide-solid";
+import Plus from "lucide-solid/icons/plus";
+import Search from "lucide-solid/icons/search";
+import Sparkles from "lucide-solid/icons/sparkles";
+import Wrench from "lucide-solid/icons/wrench";
+import X from "lucide-solid/icons/x";
 
 import { Avatar } from "~/components/avatar";
 import { api } from "~/lib/api";

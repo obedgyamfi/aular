@@ -1,5 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js";
-import { ChevronDown } from "lucide-solid";
+import ChevronDown from "lucide-solid/icons/chevron-down";
 
 import type { ToolCall } from "~/lib/types";
 

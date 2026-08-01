@@ -1,5 +1,7 @@
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
-import { Plus, Search, X } from "lucide-solid";
+import Plus from "lucide-solid/icons/plus";
+import Search from "lucide-solid/icons/search";
+import X from "lucide-solid/icons/x";
 
 import { defaultSkillsForRole } from "~/components/agent-capabilities";
 import { actions, activeProject, state } from "~/lib/store";

@@ -1,5 +1,10 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { ArrowLeft, Clock3, ExternalLink, FileText, Play, ShieldAlert } from "lucide-solid";
+import ArrowLeft from "lucide-solid/icons/arrow-left";
+import Clock3 from "lucide-solid/icons/clock-3";
+import ExternalLink from "lucide-solid/icons/external-link";
+import FileText from "lucide-solid/icons/file-text";
+import Play from "lucide-solid/icons/play";
+import ShieldAlert from "lucide-solid/icons/shield-alert";
 
 import {
   layoutWorkflow,

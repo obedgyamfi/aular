@@ -1,5 +1,10 @@
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
-import { Clock, Maximize, Minus, Pencil, Plus, RotateCcw } from "lucide-solid";
+import Clock from "lucide-solid/icons/clock";
+import Maximize from "lucide-solid/icons/maximize";
+import Minus from "lucide-solid/icons/minus";
+import Pencil from "lucide-solid/icons/pencil";
+import Plus from "lucide-solid/icons/plus";
+import RotateCcw from "lucide-solid/icons/rotate-ccw";
 
 import { Avatar, avatarColor } from "~/components/avatar";
 import { defaultSkillsForRole } from "~/components/agent-capabilities";
