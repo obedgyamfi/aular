@@ -30,7 +30,12 @@ const ORG_R = 26;
 const DOC_R = 15;
 /** Breathing room between the outermost general doc and the region's edge. Wide
  *  enough that a member's own label sits inside the boundary rather than on it. */
-const ZONE_PAD = ORG_R + 34;
+const ZONE_PAD = ORG_R + 24;
+/** Clear space held OUTSIDE the region, so nothing rests against the line. */
+const ZONE_CLEARANCE = 78;
+/** Where non-members spawn: past the boundary and its clearance, so the region
+ *  starts empty rather than being cleared by force. */
+const SEED_OUTSIDE = 90 + ZONE_PAD + ZONE_CLEARANCE;
 
 type Kind = "agent" | "org" | "own";
 
@@ -81,10 +86,10 @@ export function KnowledgeGraph(props: {
     // other gives the group its own cohesion, no centre required.
     const org = orgDocs();
     for (let i = 1; i < org.length; i++) {
-      edges.push({ from: org[i - 1]!.id, to: org[i]!.id, rest: 84, strength: 0.06 });
+      edges.push({ from: org[i - 1]!.id, to: org[i]!.id, rest: 64, strength: 0.07 });
     }
     if (org.length > 2) {
-      edges.push({ from: org[org.length - 1]!.id, to: org[0]!.id, rest: 84, strength: 0.06 });
+      edges.push({ from: org[org.length - 1]!.id, to: org[0]!.id, rest: 64, strength: 0.07 });
     }
     return { items, edges };
   });
@@ -99,22 +104,29 @@ export function KnowledgeGraph(props: {
     const { items, edges } = graph();
     cancelAnimationFrame(raf);
 
-    // Seeded near the middle and left to sort itself out. A ring seed placed
-    // everything on a perfect circle and the forces, already near equilibrium,
-    // largely kept it there — which looked composed rather than physical. The
-    // scatter is hashed from the id rather than Math.random so a given
-    // organization lays out the same way every time it is opened.
+    /**
+     * Where things start.
+     *
+     * With no centre pull the seed is roughly where the layout stays, so this
+     * decides the graph's footprint as much as the forces do — and it seeds the
+     * two tiers into the arrangement they belong in rather than mixing them and
+     * making the zone force fight its way back out. General docs go in a tight
+     * knot at the origin; everyone else spawns beyond the keep-out ring, so
+     * nothing ever has to be evicted from the region in the first place.
+     *
+     * Hashed from the id rather than Math.random, so an organization lays out
+     * the same way every time it is opened.
+     */
     const prev = new Map(sim.map((n) => [n.id, n]));
     sim = items.map((it) => {
       const was = prev.get(it.id);
       if (was) return { ...was, charge: chargeOf(it.kind) };
-      // With no centre pull the seed is roughly where the layout stays, so this
-      // sets the graph's footprint as much as the forces do: spread far enough
-      // that repulsion isn't fighting a pile-up, tight enough that everything
-      // fits on screen without zooming out to read it.
       const h = hash(it.id);
       const a = (h % 360) * (Math.PI / 180);
-      const r = 50 + ((h >> 9) % 190);
+      const r =
+        it.kind === "org"
+          ? 24 + ((h >> 9) % 66)
+          : SEED_OUTSIDE + ((h >> 9) % 240);
       return {
         id: it.id,
         x: Math.cos(a) * r,
@@ -124,8 +136,6 @@ export function KnowledgeGraph(props: {
         charge: chargeOf(it.kind),
       };
     });
-    // The hub is a real body so agents have something to orbit, but it never
-    // moves and nothing draws it.
 
     reheat();
   });
@@ -150,7 +160,7 @@ export function KnowledgeGraph(props: {
       const moved = tick(sim, graph().edges, {
         // The general-docs area is a place, not an outline over one: agents and
         // their documents get pushed out of it rather than drifting through.
-        zone: { members: zoneMembers(), pad: ZONE_PAD },
+        zone: { members: zoneMembers(), pad: ZONE_PAD, clearance: ZONE_CLEARANCE },
       });
       setPlaces(new Map(sim.map((n) => [n.id, { x: n.x, y: n.y }])));
       frames += 1;

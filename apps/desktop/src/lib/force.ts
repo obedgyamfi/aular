@@ -64,7 +64,16 @@ export interface ForceOptions {
    * The circle is derived from where the members actually are, every tick, so
    * the exclusion always matches whatever gets drawn from the same numbers.
    */
-  zone?: { members: Set<string>; pad: number };
+  zone?: {
+    members: Set<string>;
+    pad: number;
+    /**
+     * Gap held OUTSIDE the drawn boundary. Without it, nodes are pushed to
+     * exactly the radius and come to rest sitting on the line — technically
+     * excluded, visually touching, which is worse than no boundary at all.
+     */
+    clearance?: number;
+  };
 }
 
 /** The circle a zone's members currently occupy. Exported so the view can draw
@@ -154,13 +163,14 @@ export function tick(
   if (opts.zone) {
     const z = zoneCircle(nodes, opts.zone.members, opts.zone.pad);
     if (z) {
+      const keepOut = z.r + (opts.zone.clearance ?? 0);
       for (const n of nodes) {
         if (opts.zone.members.has(n.id) || n.pinned) continue;
         const dx = n.x - z.x;
         const dy = n.y - z.y;
         const d = Math.hypot(dx, dy) || 0.001;
-        if (d >= z.r) continue;
-        const push = (z.r - d) * 0.14;
+        if (d >= keepOut) continue;
+        const push = (keepOut - d) * 0.14;
         n.vx += (dx / d) * push;
         n.vy += (dy / d) * push;
       }
