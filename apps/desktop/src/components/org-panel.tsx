@@ -1,9 +1,7 @@
 import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
-import Plus from "lucide-solid/icons/plus";
-import Sparkles from "lucide-solid/icons/sparkles";
 
+import { Mark } from "~/components/logo";
 import { NodeInspector } from "~/components/node-inspector";
-import { Tooltip } from "~/components/tooltip";
 import { OrgBuilderChat } from "~/components/org-builder-chat";
 import { OrgGraph } from "~/components/org-graph";
 import { OrgDocs } from "~/components/org-docs";
@@ -109,15 +107,31 @@ export function OrgPanel() {
             </div>
             <div class="text-[11.5px] text-[var(--muted)]">{heading().sub}</div>
           </div>
-          {/* Not a form any more: hiring is a sentence to AULAR, so the button
-              just opens the rail and hands you the composer. */}
+          {/* The rail's identity and its switch, in one control: the AULAR tile
+              with what talking to it is for. Closed, clicking opens the rail
+              with the cursor in its composer (hiring is a sentence, not a
+              form); open, it puts the rail away. */}
           <button
             type="button"
-            onClick={() => actions.hireAgent()}
-            class="ml-auto inline-flex items-center gap-[7px] rounded-[var(--r2)] bg-[var(--text)] px-3.5 py-[9px] text-[12.5px] font-[650] text-[var(--bg)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--on-accent)]"
+            aria-pressed={state.orgChatOpen}
+            aria-label={state.orgChatOpen ? "Hide Build with AULAR" : "Build with AULAR"}
+            onClick={() =>
+              state.orgChatOpen ? actions.setOrgChatOpen(false) : actions.hireAgent()
+            }
+            class="ml-auto flex items-center gap-2.5 rounded-[var(--r3)] border px-3 py-[5px] transition-colors"
+            classList={{
+              "border-[var(--accent)] bg-[var(--accent-soft)]": state.orgChatOpen,
+              "border-[var(--line)] bg-[var(--surface)] hover:border-[var(--accent)]":
+                !state.orgChatOpen,
+            }}
           >
-            <Plus size={16} stroke-width={2} />
-            Hire an agent
+            <span class="grid size-[26px] flex-none place-items-center rounded-[8px] bg-[var(--accent)] bg-[image:var(--accent-grad)] text-[var(--on-accent)]">
+              <Mark class="h-[14px] w-auto [--v2-icon-icon-base:currentColor] [--v2-icon-icon-muted:color-mix(in_srgb,currentColor_40%,transparent)]" />
+            </span>
+            <span class="flex flex-col items-start">
+              <span class="text-[12px] font-bold leading-[15px] text-[var(--text)]">AULAR</span>
+              <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">Hire an agent</span>
+            </span>
           </button>
         </header>
 
@@ -139,28 +153,13 @@ export function OrgPanel() {
       </div>
 
       {/* ── RIGHT: the builder chat (or a node's inspector), full height. Shared
-          by both tabs so Overview and Knowledge bank read as one layout.
-          Collapsible to a slim strip — the strip keeps the rail's identity (the
-          sparkles tile) so there's always a visible way back. ── */}
-      <Show
-        when={state.orgChatOpen}
-        fallback={
-          <aside class="flex flex-none flex-col items-center border-l border-[var(--line)] px-1.5 pt-2.5">
-            <Tooltip label="Build with AULAR" side="top">
-              <button
-                type="button"
-                aria-label="Expand Build with AULAR"
-                onClick={() => actions.setOrgChatOpen(true)}
-                class="grid size-[34px] place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent-text)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--on-accent)]"
-              >
-                <Sparkles size={16} stroke-width={1.9} />
-              </button>
-            </Tooltip>
-          </aside>
-        }
-      >
+          by both tabs so Overview and Knowledge bank read as one layout. A
+          rounded panel floating beside the canvas rather than a welded column —
+          and when it's away it's gone entirely: the AULAR button in the header
+          is the way back, so no strip has to hold its place. ── */}
+      <Show when={state.orgChatOpen}>
         <aside
-          class="relative flex flex-none flex-col border-l border-[var(--line)]"
+          class="relative my-3 mr-3 flex flex-none flex-col overflow-hidden rounded-[16px] border border-[var(--line)]"
           style={{ width: `${chatWidth()}px` }}
         >
           {/* drag to resize */}
