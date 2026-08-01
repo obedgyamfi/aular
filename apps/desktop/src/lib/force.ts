@@ -37,11 +37,21 @@ export interface ForceEdge {
 }
 
 export interface ForceOptions {
-  /** Pull toward the origin. Small — it frames, it shouldn't crush. */
+  /**
+   * Pull toward the origin. Zero by default, and that is the point: a centre
+   * pull organises everything around the middle, so a node you drag to a corner
+   * creeps back and the layout always reads as a wheel.
+   */
   gravity?: number;
   damping?: number;
-  /** Below this total movement the layout is done and the loop can stop. */
-  settleAt?: number;
+  /**
+   * How far repulsion reaches. This is what replaces gravity as the thing that
+   * stops the graph exploding: with unbounded 1/d² push and nothing pulling
+   * back, separate clusters accelerate apart forever. Beyond this distance
+   * nodes simply stop noticing each other, so a cluster tidies itself locally
+   * and then stays where it was put.
+   */
+  range?: number;
 }
 
 /**
@@ -55,8 +65,13 @@ export function tick(
   edges: ForceEdge[],
   opts: ForceOptions = {},
 ): number {
-  const gravity = opts.gravity ?? 0.012;
+  const gravity = opts.gravity ?? 0;
   const damping = opts.damping ?? 0.82;
+  // Short on purpose. Repulsion is what sets the graph's overall size now that
+  // nothing pulls inward, and every node pushing every other within 340px
+  // settled a 47-node graph eleven thousand units across.
+  const range = opts.range ?? 190;
+  const range2 = range * range;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
@@ -69,6 +84,7 @@ export function tick(
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let d2 = dx * dx + dy * dy;
+      if (d2 > range2) continue;
       if (d2 < 1) {
         // Deterministic nudge rather than random, so layouts are reproducible.
         dx = (i % 2 ? 1 : -1) * 0.5;

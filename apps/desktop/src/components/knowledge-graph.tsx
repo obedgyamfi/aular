@@ -28,9 +28,6 @@ import type { Agent, OrgDocument } from "~/lib/types";
 const AGENT_R = 30;
 const ORG_R = 26;
 const DOC_R = 15;
-/** The centre of the org-wide cluster: a coordinate every agent binds to, not
- *  a node anyone can click. */
-const HUB = "__hub__";
 
 type Kind = "agent" | "org" | "own";
 
@@ -64,18 +61,28 @@ export function KnowledgeGraph(props: {
     for (const d of orgDocs()) items.push({ id: d.id, kind: "org", doc: d });
     for (const a of props.agents) {
       items.push({ id: a.id, kind: "agent", agent: a });
-      // One binding to the shared centre. Drawing a line to every org document
-      // instead is agents x documents — 16 and 26 is 430 lines, a grey disc
-      // that says nothing and costs a frame to paint.
-      if (orgDocs().length) edges.push({ from: a.id, to: HUB, rest: 260, strength: 0.02 });
       for (const d of ownDocs().get(a.id) ?? []) {
         items.push({ id: d.id, kind: "own", doc: d });
         edges.push({ from: a.id, to: d.id, rest: 84, strength: 0.06 });
       }
     }
-    // Org documents hold the middle: a short leash to the hub keeps the cluster
-    // together while repulsion spaces its members.
-    for (const d of orgDocs()) edges.push({ from: HUB, to: d.id, rest: 90, strength: 0.06 });
+    // Nothing anchors anything to the middle. Every agent does read every org
+    // document, but expressing that as force made the canvas a wheel: the
+    // agents ringed a centre they were tied to, and a node dragged clear crept
+    // back. The tier is said by size and colour instead, which costs no
+    // geometry.
+    //
+    // Org documents still need to hold together as a family, though — with no
+    // edges at all they were pure repulsion particles, shoved outward by
+    // everything and with nothing to bring them home. Threading them to each
+    // other gives the group its own cohesion, no centre required.
+    const org = orgDocs();
+    for (let i = 1; i < org.length; i++) {
+      edges.push({ from: org[i - 1]!.id, to: org[i]!.id, rest: 110, strength: 0.05 });
+    }
+    if (org.length > 2) {
+      edges.push({ from: org[org.length - 1]!.id, to: org[0]!.id, rest: 110, strength: 0.05 });
+    }
     return { items, edges };
   });
 
@@ -98,9 +105,12 @@ export function KnowledgeGraph(props: {
     sim = items.map((it) => {
       const was = prev.get(it.id);
       if (was) return { ...was, charge: chargeOf(it.kind) };
+      // Spread wide from the start. With no centre pull the seed is where the
+      // layout mostly stays, so a tight cluster would spend its first second
+      // being blown apart by repulsion instead of settling.
       const h = hash(it.id);
       const a = (h % 360) * (Math.PI / 180);
-      const r = 40 + ((h >> 9) % 90);
+      const r = 80 + ((h >> 9) % 360);
       return {
         id: it.id,
         x: Math.cos(a) * r,
@@ -112,7 +122,6 @@ export function KnowledgeGraph(props: {
     });
     // The hub is a real body so agents have something to orbit, but it never
     // moves and nothing draws it.
-    sim.push({ id: HUB, x: 0, y: 0, vx: 0, vy: 0, charge: 0, pinned: true });
 
     reheat();
   });
@@ -236,6 +245,14 @@ export function KnowledgeGraph(props: {
     reheat();
   };
 
+  /**
+   * Frame everything, wherever it has drifted to.
+   *
+   * Pans to the content's own centre rather than resetting to the origin.
+   * Nothing holds the graph at the origin any more, so after some dragging the
+   * middle of the canvas is just an arbitrary point — and this is the only way
+   * back from having pushed a cluster off-screen.
+   */
   const fit = () => {
     const pts = [...places().values()];
     if (!pts.length || !surface) return;
@@ -245,10 +262,14 @@ export function KnowledgeGraph(props: {
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minY = Math.min(...ys), maxY = Math.max(...ys);
     const r = surface.getBoundingClientRect();
-    setZoom(
-      Math.min(2.2, Math.max(0.2, Math.min(r.width / (maxX - minX + pad * 2), r.height / (maxY - minY + pad * 2)))),
+    const z = Math.min(
+      2.2,
+      Math.max(0.2, Math.min(r.width / (maxX - minX + pad * 2), r.height / (maxY - minY + pad * 2))),
     );
-    setPan({ x: 0, y: 0 });
+    setZoom(z);
+    // The world is scaled about the canvas centre, so the offset that brings
+    // the content's midpoint there is scaled too.
+    setPan({ x: -((minX + maxX) / 2) * z, y: -((minY + maxY) / 2) * z });
   };
 
   const at = (id: string) => places().get(id) ?? { x: 0, y: 0 };
@@ -335,12 +356,11 @@ export function KnowledgeGraph(props: {
           style={{ left: "0", top: "0", width: "1px", height: "1px" }}
           aria-hidden="true"
         >
-          {/* Only ownership is drawn. The hub edges still act on the layout —
-              they hold the ring and keep the centre together — but a spoke from
-              every agent to the middle is sixteen lines converging on a point,
-              which read as a starburst nobody asked a question about. Belonging
-              to the org tier is said by the centre cluster being the centre. */}
-          <For each={graph().edges.filter((e) => e.from !== HUB && e.to !== HUB)}>
+          {/* Every edge here is ownership — an agent and something only they
+              read. Org-wide documents have none: they belong to everyone, and
+              sixteen spokes into a point said that worse than size and colour
+              do. */}
+          <For each={graph().edges}>
             {(e) => {
               const a = () => at(e.from);
               const b = () => at(e.to);
