@@ -322,7 +322,7 @@ function DocRow(props: {
 }
 
 /** A document, being read: a page, not a form. */
-function DocView(props: {
+export function DocView(props: {
   doc: OrgDocument;
   scopeName?: string;
   onEdit: () => void;
@@ -424,9 +424,13 @@ function DocView(props: {
  * The same document, being written — a name and its contents, nothing else.
  * The body doubles as a drop zone, so typing and upload share one surface.
  */
-function DocEditor(props: {
+export function DocEditor(props: {
   doc: OrgDocument | null;
   seed: { title: string; content: string } | null;
+  /** Scope for a NEW document: an agent id makes it that agent's
+   *  specialization, null/absent makes it org-wide. Editing keeps the scope
+   *  the document already has. */
+  agentId?: string | null;
   onSaved: (d: OrgDocument) => void;
   onCancel: () => void;
 }) {
@@ -445,9 +449,11 @@ function DocEditor(props: {
     try {
       const saved = await api.upsertDocument({
         // Editing an existing doc keeps its scope and kind so the upsert lands
-        // on the same record; a new doc is an org-wide plain document.
-        ...(props.doc?.agent_profile_id
-          ? { agent_profile_id: props.doc.agent_profile_id }
+        // on the same record; a new one takes the scope it was created from —
+        // an agent's shelf writes their specialization, the canvas at large
+        // writes org-wide.
+        ...((props.doc?.agent_profile_id ?? props.agentId ?? null)
+          ? { agent_profile_id: (props.doc?.agent_profile_id ?? props.agentId)! }
           : {}),
         title: title().trim(),
         kind: props.doc?.kind ?? "doc",

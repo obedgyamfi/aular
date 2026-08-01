@@ -162,7 +162,7 @@ export function App() {
             <Show when={state.register === "work"}>
               <div class="aular-rise flex min-h-0 min-w-0 flex-1"><WorkBoard /></div>
             </Show>
-            {/* One panel, two doors: the sidebar's Org chart and Knowledge bank
+            {/* One panel, two doors: the sidebar's Org chart and Knowledge graph
                 rows are the same surface opened on different tabs. */}
             <Show when={state.register === "org" || state.register === "knowledge"}>
               <div class="aular-rise flex min-h-0 min-w-0 flex-1"><OrgPanel /></div>

@@ -2,9 +2,14 @@ import { createEffect, createMemo, createResource, createSignal, Show } from "so
 
 import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";
+import { KnowledgeAside } from "~/components/knowledge-aside";
+import { KnowledgeGraph } from "~/components/knowledge-graph";
+import { Modal } from "~/components/modal";
+import { DocEditor, DocView } from "~/components/org-docs";
+import { api } from "~/lib/api";
+import type { Agent, OrgDocument } from "~/lib/types";
 import { OrgBuilderChat } from "~/components/org-builder-chat";
 import { OrgGraph } from "~/components/org-graph";
-import { OrgDocs } from "~/components/org-docs";
 import { WorkflowCanvas } from "~/components/workflow-orchestration";
 import type { Proposal } from "~/lib/intent";
 import { loadScheduleEntries } from "~/lib/schedules";
@@ -18,7 +23,7 @@ type Tab = "overview" | "docs";
  * agent's chat on the right.
  *
  * Which view you get is the *sidebar's* choice, not a tab bar's — Org chart and
- * Knowledge bank are two rows in the column, so the register is the only thing
+ * Knowledge graph are two rows in the column, so the register is the only thing
  * that decides. The in-panel tabs that used to do this job were a second
  * switcher for the same pair, and the two could disagree.
  * (Usage & tokens moved to Settings → Usage & limits.)
@@ -41,7 +46,7 @@ export function OrgPanel() {
   // one — so it has to say which, or the header contradicts the row you clicked.
   const heading = () => {
     if (tab() === "docs") {
-      return { title: "Knowledge bank", sub: "What the whole company works from" };
+      return { title: "Knowledge graph", sub: "What the company knows, and who uses it" };
     }
     if (atHome()) {
       return { title: "Org chart", sub: "Reporting lines, roles, and live status" };
@@ -88,6 +93,17 @@ export function OrgPanel() {
     selected() ? state.agents.find((a) => a.id === selected()) : undefined,
   );
 
+  // ── the knowledge canvas ──────────────────────────────────────────────────
+  // A document opens in a dialog over the canvas; an agent opens the shelf
+  // beside it. Both live here so the canvas stays a canvas.
+  const [documents, { refetch: refetchDocs }] = createResource(() =>
+    api.listDocuments().then((d) => d ?? []).catch(() => []),
+  );
+  const [openDoc, setOpenDoc] = createSignal<OrgDocument | null>(null);
+  const [newDocFor, setNewDocFor] = createSignal<string | null>(null);
+  const [knowledgeAgent, setKnowledgeAgent] = createSignal<Agent | null>(null);
+  const [editingDoc, setEditingDoc] = createSignal(false);
+
   return (
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* ── TOP: one header across the whole surface, so the AULAR button sits
@@ -101,7 +117,7 @@ export function OrgPanel() {
           </div>
           {/* The rail's identity and its switch, in one control: the agent's
               own face with what talking to it here is for — creating agents on
-              the org chart, teaching them in the Knowledge bank. Closed,
+              the org chart, teaching them in the Knowledge graph. Closed,
               clicking opens the rail with the cursor in its composer (both are
               sentences, not forms) and stays on the tab you're reading; open,
               it puts the rail away. Quiet on purpose — a hairline border and a
@@ -118,7 +134,7 @@ export function OrgPanel() {
                 return;
               }
               // Not actions.hireAgent(): that navigates to the org chart, and
-              // from the Knowledge bank the rail should open right here.
+              // from the Knowledge graph the rail should open right here.
               actions.setOrgChatOpen(true);
               queueMicrotask(focusComposer);
             }}
@@ -157,8 +173,19 @@ export function OrgPanel() {
               </Show>
             </div>
           </Show>
+          {/* The knowledge bank is a canvas now, on the same 12px gutter as the
+              org chart — agents as suns, their documents orbiting, org-wide
+              knowledge at the centre reaching everyone. */}
           <Show when={tab() === "docs"}>
-            <OrgDocs />
+            <div class="min-h-0 flex-1 p-3">
+              <KnowledgeGraph
+                agents={state.agents.filter((a) => a.role !== "system")}
+                documents={documents() ?? []}
+                selectedId={openDoc()?.id ?? knowledgeAgent()?.id ?? null}
+                onOpenDoc={(d) => setOpenDoc(d)}
+                onOpenAgent={(a) => setKnowledgeAgent(a)}
+              />
+            </div>
           </Show>
         </div>
 
@@ -168,6 +195,20 @@ export function OrgPanel() {
             Otherwise the builder chat, a rounded panel floating beside the
             canvas — and when it's away it's gone entirely: the AULAR button
             is the way back, so no strip has to hold its place. ── */}
+        {/* On the knowledge canvas the aside belongs to whichever agent you
+            clicked; the builder chat keeps the slot when none is selected. */}
+        <Show when={tab() === "docs" && knowledgeAgent()}>
+          {(a) => (
+            <KnowledgeAside
+              agent={a()}
+              documents={documents() ?? []}
+              onOpenDoc={(d) => setOpenDoc(d)}
+              onNewDoc={(id) => setNewDocFor(id)}
+              onClose={() => setKnowledgeAgent(null)}
+            />
+          )}
+        </Show>
+
         <Show
           when={tab() === "overview" && selectedAgent()}
           fallback={
@@ -201,6 +242,62 @@ export function OrgPanel() {
           )}
         </Show>
       </div>
+
+      {/* A document reads and edits in a dialog over the canvas — it's
+          markdown, and markdown wants width. */}
+      <Show when={openDoc() || newDocFor()}>
+        <Modal
+          title={openDoc()?.title ?? "New document"}
+          width={860}
+          onClose={() => {
+            setOpenDoc(null);
+            setNewDocFor(null);
+          }}
+        >
+          <Show
+            when={openDoc()}
+            fallback={
+              <DocEditor
+                doc={null}
+                seed={null}
+                agentId={newDocFor() === "org" ? null : newDocFor()}
+                onSaved={() => {
+                  setNewDocFor(null);
+                  void refetchDocs();
+                }}
+                onCancel={() => setNewDocFor(null)}
+              />
+            }
+          >
+            {(d) => (
+              <Show
+                when={editingDoc()}
+                fallback={
+                  <DocView
+                    doc={d()}
+                    onEdit={() => setEditingDoc(true)}
+                    onDeleted={() => {
+                      setOpenDoc(null);
+                      void refetchDocs();
+                    }}
+                  />
+                }
+              >
+                <DocEditor
+                  doc={d()}
+                  seed={null}
+                  onSaved={(saved) => {
+                    setEditingDoc(false);
+                    setOpenDoc(saved);
+                    void refetchDocs();
+                  }}
+                  onCancel={() => setEditingDoc(false)}
+                />
+              </Show>
+            )}
+          </Show>
+        </Modal>
+      </Show>
     </div>
   );
 }

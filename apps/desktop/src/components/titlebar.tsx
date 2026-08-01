@@ -40,7 +40,7 @@ function context(): { label: string; icon: JSX.Element } {
         ? { label: "Org chart", icon: <Network {...sz} /> }
         : { label: "Team", icon: <Users {...sz} /> };
     case "knowledge":
-      return { label: "Knowledge bank", icon: <BookOpen {...sz} /> };
+      return { label: "Knowledge graph", icon: <BookOpen {...sz} /> };
     case "work":
       return {
         label: atHome() ? "Mission control" : "Work board",

@@ -29,7 +29,7 @@ export function HomeBody(props: {
         <NavRow register="org" label="Org chart" icon={<Network size={16} stroke-width={1.9} />} />
         <NavRow
           register="knowledge"
-          label="Knowledge bank"
+          label="Knowledge graph"
           icon={<BookOpen size={16} stroke-width={1.9} />}
         />
         <NavRow
