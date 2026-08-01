@@ -3,7 +3,7 @@ import ArrowDown from "lucide-solid/icons/arrow-down";
 
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";
-import { DelegationCard } from "~/components/delegation-card";
+import { DelegationGroup } from "~/components/delegation-group";
 import { SystemNote } from "~/components/message-body";
 import { MessageRow } from "~/components/message-row";
 import { Thinking } from "~/components/thinking";
@@ -37,7 +37,7 @@ const GUTTER = "w-10 shrink-0";
 type Item =
   | { kind: "message"; at: number; message: Message }
   | { kind: "tool"; at: number; tools: ToolCall[] }
-  | { kind: "delegation"; at: number; task: Task };
+  | { kind: "delegation"; at: number; tasks: Task[] };
 
 export function MessageList() {
   const agent = () => activeAgent();
@@ -63,18 +63,23 @@ export function MessageList() {
     const delegations = delegationsOfConversation(convoId).map((t) => ({
       kind: "delegation" as const,
       at: Date.parse(t.created_at),
-      task: t,
+      tasks: [t],
     }));
     const ordered = [...msgs, ...tools, ...delegations].sort((a, b) => a.at - b.at);
 
-    // Fold consecutive tool calls into one run. A turn that reached for a
-    // hundred tools is one action with a hundred steps, not a hundred events —
-    // and drawing it as a hundred lines buries the conversation it belongs to.
+    // Fold consecutive runs of the same kind into one. A turn that reached for
+    // a hundred tools is one action with a hundred steps, and a lead fanning
+    // work out to six teammates is one round of hand-offs — drawing either as
+    // N separate events buries the conversation they belong to.
     const folded: Item[] = [];
     for (const it of ordered) {
       const prev = folded[folded.length - 1];
       if (it.kind === "tool" && prev?.kind === "tool") {
         prev.tools.push(...it.tools);
+        continue;
+      }
+      if (it.kind === "delegation" && prev?.kind === "delegation") {
+        prev.tasks.push(...it.tasks);
         continue;
       }
       folded.push(it);
@@ -194,8 +199,8 @@ export function MessageList() {
                       <div class="mx-1 flex gap-2.5 px-2 py-1">
                         <div class={GUTTER} />
                         <div class="min-w-0 flex-1">
-                          <DelegationCard
-                            task={(it as Extract<Item, { kind: "delegation" }>).task}
+                          <DelegationGroup
+                            tasks={(it as Extract<Item, { kind: "delegation" }>).tasks}
                           />
                         </div>
                       </div>
