@@ -55,6 +55,31 @@ export interface ForceOptions {
    * and then stays where it was put.
    */
   range?: number;
+  /**
+   * An area belonging to one set of nodes, which everything else is pushed out
+   * of. Drawing a boundary round a group does not make it a place — without
+   * this, unrelated nodes drift inside the outline and it reads as decoration
+   * laid over the graph rather than a region of it.
+   *
+   * The circle is derived from where the members actually are, every tick, so
+   * the exclusion always matches whatever gets drawn from the same numbers.
+   */
+  zone?: { members: Set<string>; pad: number };
+}
+
+/** The circle a zone's members currently occupy. Exported so the view can draw
+ *  exactly the boundary the simulation is enforcing. */
+export function zoneCircle(
+  nodes: ForceNode[],
+  members: Set<string>,
+  pad: number,
+): { x: number; y: number; r: number } | null {
+  const inside = nodes.filter((n) => members.has(n.id));
+  if (inside.length < 2) return null;
+  const x = inside.reduce((s, n) => s + n.x, 0) / inside.length;
+  const y = inside.reduce((s, n) => s + n.y, 0) / inside.length;
+  const r = Math.max(...inside.map((n) => Math.hypot(n.x - x, n.y - y))) + pad;
+  return { x, y, r };
 }
 
 /**
@@ -121,6 +146,25 @@ export function tick(
     a.vy += fy;
     b.vx -= fx;
     b.vy -= fy;
+  }
+
+  // Clear the zone. Anything that is not a member and has strayed inside gets
+  // pushed straight out along the radius — firmly, because a boundary that
+  // merely discourages trespass still gets drawn through.
+  if (opts.zone) {
+    const z = zoneCircle(nodes, opts.zone.members, opts.zone.pad);
+    if (z) {
+      for (const n of nodes) {
+        if (opts.zone.members.has(n.id) || n.pinned) continue;
+        const dx = n.x - z.x;
+        const dy = n.y - z.y;
+        const d = Math.hypot(dx, dy) || 0.001;
+        if (d >= z.r) continue;
+        const push = (z.r - d) * 0.14;
+        n.vx += (dx / d) * push;
+        n.vy += (dy / d) * push;
+      }
+    }
   }
 
   // Gravity, damping, speed limit, integrate.

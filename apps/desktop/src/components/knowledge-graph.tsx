@@ -28,6 +28,9 @@ import type { Agent, OrgDocument } from "~/lib/types";
 const AGENT_R = 30;
 const ORG_R = 26;
 const DOC_R = 15;
+/** Breathing room between the outermost general doc and the region's edge. Wide
+ *  enough that a member's own label sits inside the boundary rather than on it. */
+const ZONE_PAD = ORG_R + 34;
 
 type Kind = "agent" | "org" | "own";
 
@@ -144,7 +147,11 @@ export function KnowledgeGraph(props: {
     cancelAnimationFrame(raf);
     let frames = 0;
     const run = () => {
-      const moved = tick(sim, graph().edges);
+      const moved = tick(sim, graph().edges, {
+        // The general-docs area is a place, not an outline over one: agents and
+        // their documents get pushed out of it rather than drifting through.
+        zone: { members: zoneMembers(), pad: ZONE_PAD },
+      });
       setPlaces(new Map(sim.map((n) => [n.id, { x: n.x, y: n.y }])));
       frames += 1;
       if (nodeDrag || (moved > 0.6 && frames < 600)) raf = requestAnimationFrame(run);
@@ -170,13 +177,13 @@ export function KnowledgeGraph(props: {
     return !!m && !m.has(id);
   };
 
+  /** Which nodes the general-docs region belongs to. */
+  const zoneMembers = createMemo(() => new Set(orgDocs().map((d) => d.id)));
+
   /**
-   * The circle drawn round the org-wide documents.
-   *
-   * Nothing ties that tier to a place any more, so it needed a way to still
-   * read as one thing. A dashed boundary that follows wherever the group
-   * drifts says "these belong together" without reintroducing an anchor —
-   * and unlike the old spokes it costs one shape rather than sixteen lines.
+   * The circle round the org-wide documents — drawn from exactly the numbers
+   * the simulation uses to keep everything else out of it, so the outline and
+   * the exclusion can never disagree.
    */
   const orgRegion = createMemo(() => {
     const pts = orgDocs()
@@ -185,7 +192,7 @@ export function KnowledgeGraph(props: {
     if (pts.length < 2) return null;
     const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-    const r = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + ORG_R + 30;
+    const r = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + ZONE_PAD;
     return { cx, cy, r };
   });
 
