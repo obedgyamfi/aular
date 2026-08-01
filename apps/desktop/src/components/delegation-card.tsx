@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import ChevronDown from "lucide-solid/icons/chevron-down";
+import ChevronRight from "lucide-solid/icons/chevron-right";
 import CornerDownRight from "lucide-solid/icons/corner-down-right";
 
 import { Avatar } from "~/components/avatar";
@@ -24,6 +25,7 @@ import type { Task } from "~/lib/types";
  */
 export function DelegationCard(props: { task: Task }) {
   const t = () => props.task;
+  const [briefOpen, setBriefOpen] = createSignal(false);
   const [open, setOpen] = createSignal(false);
 
   const meta = () => STATE_META[t().state];
@@ -67,9 +69,32 @@ export function DelegationCard(props: { task: Task }) {
         </span>
       </div>
 
-      <p class="whitespace-pre-wrap break-words border-t border-[var(--line)] px-3 py-2 text-[12.5px] leading-[18px] text-[var(--text-2)]">
-        {t().task}
-      </p>
+      {/* The brief, folded. These run to a paragraph or more of exact
+          requirements — every hand-off in a busy thread printing its full
+          instruction turns the conversation into a wall of specs. One line
+          says what it was about; click for the rest. */}
+      <button
+        type="button"
+        onClick={() => setBriefOpen((o) => !o)}
+        aria-expanded={briefOpen()}
+        class="flex w-full items-start gap-1.5 border-t border-[var(--line)] px-3 py-2 text-left transition-colors hover:bg-[var(--element-hover)]"
+      >
+        <span
+          class="mt-0.5 shrink-0 text-[var(--faint)] transition-transform"
+          classList={{ "rotate-90": briefOpen() }}
+        >
+          <ChevronRight size={13} stroke-width={2} />
+        </span>
+        <span
+          class="min-w-0 flex-1 break-words text-[12.5px] leading-[18px] text-[var(--text-2)]"
+          classList={{
+            "whitespace-pre-wrap": briefOpen(),
+            "truncate": !briefOpen(),
+          }}
+        >
+          {t().task}
+        </span>
+      </button>
 
       {/* Their report, once there is one. Collapsed by default: a delegation
           that returns two pages of findings must not bury the conversation
