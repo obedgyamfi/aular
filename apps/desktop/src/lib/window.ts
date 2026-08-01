@@ -26,7 +26,10 @@ const win = () => {
  * reflows to the real window. In a plain browser there is no webview, so the
  * call no-ops and the dev preview simply renders at 100%.
  */
-const UI_SCALE = 0.8;
+// 0.8 was the first pass; 0.7 is that look scaled down again — the whole app,
+// titlebar included, since the titlebar is part of the page. Ctrl+0 resets to
+// this, so a profile that remembered the old scale is one keystroke away.
+const UI_SCALE = 0.7;
 
 export function applyUiScale() {
   const saved = Number(localStorage.getItem("aular-zoom"));

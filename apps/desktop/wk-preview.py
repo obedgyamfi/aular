@@ -38,7 +38,7 @@ PROFILE = os.path.join(HERE, ".wk-preview-profile")
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8099/")
-    ap.add_argument("--zoom", type=float, default=0.8, help="Tauri ships 0.8")
+    ap.add_argument("--zoom", type=float, default=0.7, help="Tauri ships 0.7")
     ap.add_argument("--size", default="1100x700", help="matches tauri.conf")
     ap.add_argument("--wait", type=float, default=3.0, help="seconds before the shot")
     ap.add_argument("--out", default="/tmp/aular-webkit.png")
