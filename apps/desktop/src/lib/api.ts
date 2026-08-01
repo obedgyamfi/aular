@@ -152,6 +152,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ agent_profile_id: agentId, title }),
     }),
+  renameConversation: (id: string, title: string) =>
+    v1<Conversation>(`/conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  deleteConversation: (id: string) =>
+    v1<void>(`/conversations/${id}`, { method: "DELETE" }),
   listMessages: (conversationId: string, limit = 60) =>
     v1<Message[] | null>(`/conversations/${conversationId}/messages?limit=${limit}`),
   sendMessage: (

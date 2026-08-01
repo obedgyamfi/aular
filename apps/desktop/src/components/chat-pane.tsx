@@ -11,6 +11,7 @@ import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
 import { Onboarding } from "~/components/onboarding";
 import { RoutinesModal } from "~/components/routines-modal";
+import { SessionMenu } from "~/components/session-menu";
 import { TaskStrip } from "~/components/task-state";
 import {
   actions,
@@ -137,6 +138,9 @@ export function ChatPane() {
               </Show>
 
               <div class="flex shrink-0 items-center gap-1">
+                {/* Sessions: one agent, many threads. */}
+                <SessionMenu agent={agent()} />
+
                 <Tooltip label="Scheduled work" side="top">
                   <button
                     type="button"

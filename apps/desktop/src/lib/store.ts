@@ -6,6 +6,7 @@ import type {
   ApiProject,
   AuthUser,
   Brief,
+  Conversation,
   Health,
   MediaDescriptor,
   Message,
@@ -118,9 +119,14 @@ interface State {
   agentSkills: Record<string, string[]>;
   customSkills: string[];
 
-  /** agent id → conversation id, and the reverse. */
+  /** agent id → the conversation currently OPEN for them, and the reverse.
+   *  An agent can have many threads (see `threads`); this is the one on
+   *  screen, and switching sessions moves it. */
   conversationOf: Record<string, string>;
   agentOf: Record<string, string>;
+  /** agent id → every thread you've had with them, newest activity first.
+   *  The header's session switcher reads this; `openAgent` fills it. */
+  threads: Record<string, Conversation[]>;
 
   messages: Record<string, Message[]>;
   toolCalls: Record<string, ToolCall[]>;
@@ -277,6 +283,7 @@ const [state, set] = createStore<State>({
   agentSkills: {},
   customSkills: [],
   conversationOf: {},
+  threads: {},
   agentOf: {},
   messages: {},
   toolCalls: {},
@@ -440,6 +447,17 @@ export function previewText(content: string): string {
     .replace(/^\s*>\s?/gm, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** Pull a thread's history in. The API returns newest-first; the UI reads
+ *  oldest-first. */
+async function loadThread(convoId: string) {
+  const [msgs, tools] = await Promise.all([
+    api.listMessages(convoId),
+    api.listToolCalls(convoId).catch(() => []),
+  ]);
+  set("messages", convoId, (msgs ?? []).slice().reverse());
+  set("toolCalls", convoId, (tools ?? []).slice().reverse());
 }
 
 /** The chat list's subtitle. An older event must never overwrite a newer one. */
@@ -759,6 +777,7 @@ export const actions = {
         // OLDEST conversation, with a stale preview and unread count to match.
         for (const c of convos) {
           s.agentOf[c.id] = c.agent_profile_id;
+          (s.threads[c.agent_profile_id] ??= []).push(c);
           if (c.agent_profile_id in s.conversationOf) continue;
           s.conversationOf[c.agent_profile_id] = c.id;
           s.unread[c.agent_profile_id] = c.unread_count ?? 0;
@@ -804,6 +823,12 @@ export const actions = {
       toolCalls: {},
       unread: {},
       preview: {},
+      // Conversations belong to the account, so they go with it. These used to
+      // survive a sign-out and the next account inherited the last one's
+      // thread map — harmless only because ids differ between users.
+      conversationOf: {},
+      agentOf: {},
+      threads: {},
     });
   },
 
@@ -813,24 +838,97 @@ export const actions = {
     pushView({ register: state.register, agentId });
     let convoId = state.conversationOf[agentId];
 
+    // Always refresh the thread list — it feeds the header's session switcher,
+    // and a thread started on another device should show up here.
+    const existing = (await api.listConversations(agentId).catch(() => null)) ?? [];
+    if (existing.length) {
+      set("threads", agentId, existing);
+      for (const c of existing) set("agentOf", c.id, agentId);
+    }
+
     if (!convoId) {
-      const existing = (await api.listConversations(agentId)) ?? [];
       const convo = existing[0] ?? (await api.createConversation(agentId));
       convoId = convo.id;
+      if (!existing.length) set("threads", agentId, [convo]);
       set("conversationOf", agentId, convoId);
       set("agentOf", convoId, agentId);
     }
 
-    const [msgs, tools] = await Promise.all([
-      api.listMessages(convoId),
-      api.listToolCalls(convoId).catch(() => []),
-    ]);
-    // The API returns newest-first; the UI reads oldest-first.
-    set("messages", convoId, (msgs ?? []).slice().reverse());
-    set("toolCalls", convoId, (tools ?? []).slice().reverse());
-
+    await loadThread(convoId);
     void api.markAgentRead(agentId).catch(() => {});
     set("unread", agentId, 0);
+  },
+
+  /**
+   * Start a fresh session with an agent.
+   *
+   * A new thread rather than a new agent: same persona, same tools, an empty
+   * context window. The gateway treats each conversation as its own session,
+   * so this is how you change subject without dragging the old one along.
+   */
+  async newConversation(agentId: string) {
+    const convo = await api.createConversation(agentId);
+    set("threads", agentId, (list) => [convo, ...(list ?? [])]);
+    set("agentOf", convo.id, agentId);
+    set("conversationOf", agentId, convo.id);
+    set("messages", convo.id, []);
+    set("toolCalls", convo.id, []);
+    if (state.activeAgentId !== agentId) set("activeAgentId", agentId);
+    focusComposer();
+    return convo;
+  },
+
+  /** Switch which of an agent's threads is on screen. */
+  async openConversation(agentId: string, convoId: string) {
+    if (state.conversationOf[agentId] === convoId) return;
+    set("conversationOf", agentId, convoId);
+    set("agentOf", convoId, agentId);
+    if (state.activeAgentId !== agentId) set("activeAgentId", agentId);
+    await loadThread(convoId);
+  },
+
+  async renameConversation(convoId: string, title: string) {
+    const agentId = state.agentOf[convoId];
+    if (!agentId) return;
+    // Optimistic: the title is yours, and a round trip to see your own typing
+    // land is the kind of lag that makes a rename feel broken.
+    set("threads", agentId, (list) =>
+      (list ?? []).map((c) => (c.id === convoId ? { ...c, title } : c)),
+    );
+    try {
+      await api.renameConversation(convoId, title);
+    } catch (e) {
+      set("error", (e as Error).message);
+    }
+  },
+
+  /**
+   * Delete a thread, and land somewhere sensible.
+   *
+   * Deleting the one you're reading has to leave you *somewhere*: the next
+   * thread if there is one, a fresh session if that was the last.
+   */
+  async deleteConversation(convoId: string) {
+    const agentId = state.agentOf[convoId];
+    if (!agentId) return;
+    try {
+      await api.deleteConversation(convoId);
+    } catch (e) {
+      set("error", (e as Error).message);
+      return;
+    }
+    const rest = (state.threads[agentId] ?? []).filter((c) => c.id !== convoId);
+    set("threads", agentId, rest);
+    set("messages", convoId, undefined as unknown as Message[]);
+    set("toolCalls", convoId, undefined as unknown as ToolCall[]);
+
+    if (state.conversationOf[agentId] !== convoId) return;
+    if (rest[0]) {
+      set("conversationOf", agentId, rest[0].id);
+      await loadThread(rest[0].id);
+    } else {
+      await actions.newConversation(agentId);
+    }
   },
 
   /**
