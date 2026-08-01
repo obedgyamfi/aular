@@ -170,6 +170,25 @@ export function KnowledgeGraph(props: {
     return !!m && !m.has(id);
   };
 
+  /**
+   * The circle drawn round the org-wide documents.
+   *
+   * Nothing ties that tier to a place any more, so it needed a way to still
+   * read as one thing. A dashed boundary that follows wherever the group
+   * drifts says "these belong together" without reintroducing an anchor —
+   * and unlike the old spokes it costs one shape rather than sixteen lines.
+   */
+  const orgRegion = createMemo(() => {
+    const pts = orgDocs()
+      .map((d) => places().get(d.id))
+      .filter((p): p is { x: number; y: number } => !!p);
+    if (pts.length < 2) return null;
+    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    const r = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) + ORG_R + 30;
+    return { cx, cy, r };
+  });
+
   // ── pan, zoom, drag ───────────────────────────────────────────────────────
   let surface: HTMLDivElement | undefined;
   const [panDrag, setPanDrag] = createSignal<{ x: number; y: number; px: number; py: number } | null>(null);
@@ -357,6 +376,23 @@ export function KnowledgeGraph(props: {
           style={{ left: "0", top: "0", width: "1px", height: "1px" }}
           aria-hidden="true"
         >
+          {/* The general-docs boundary, under everything. */}
+          <Show when={orgRegion()}>
+            {(reg) => (
+              <circle
+                cx={reg().cx}
+                cy={reg().cy}
+                r={reg().r}
+                fill="var(--accent)"
+                fill-opacity="0.04"
+                stroke="var(--accent)"
+                stroke-opacity="0.35"
+                stroke-width="1.5"
+                stroke-dasharray="7 6"
+              />
+            )}
+          </Show>
+
           {/* Every edge here is ownership — an agent and something only they
               read. Org-wide documents have none: they belong to everyone, and
               sixteen spokes into a point said that worse than size and colour
@@ -384,6 +420,23 @@ export function KnowledgeGraph(props: {
             }}
           </For>
         </svg>
+
+        {/* The region's name, riding its top edge. HTML rather than SVG text so
+            it inherits the same type scale as every other label here. */}
+        <Show when={orgRegion()}>
+          {(reg) => (
+            <span
+              class="pointer-events-none absolute whitespace-nowrap rounded-[var(--pill)] border border-[var(--accent)]/40 bg-[var(--surface)] px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--accent-text)]"
+              style={{
+                left: `${reg().cx}px`,
+                top: `${reg().cy - reg().r}px`,
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              General docs
+            </span>
+          )}
+        </Show>
 
         <For each={graph().items}>
           {(it) => (
@@ -432,6 +485,41 @@ export function KnowledgeGraph(props: {
  * thousand units across — correct physics, useless picture, and Fit answered by
  * zooming to 25%.
  */
+/**
+ * The halo behind a selected node.
+ *
+ * A blurred gradient rather than a ring: the node already wears a coloured
+ * outline for identity, so selection had to say something that outline doesn't.
+ * Sits behind its sibling and never takes a pointer, so it cannot eat the click
+ * that produced it. Runs both accent stops, so it follows the theme — and the
+ * agent's own colour when dynamic accenting is on.
+ */
+function SelectionGlow(props: { on: boolean; inset: number }) {
+  return (
+    <Show when={props.on}>
+      <span
+        aria-hidden="true"
+        class="pointer-events-none absolute rounded-full"
+        style={{
+          inset: `${props.inset}px`,
+          background:
+            "conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent))",
+          filter: "blur(7px)",
+          animation: "aular-glow 2.6s ease-in-out infinite",
+        }}
+      />
+    </Show>
+  );
+}
+
+function prettyRole(role: string): string {
+  if (role === "system") return "System";
+  return role
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 /** A stable number from an id — the scatter has to be the same every launch. */
 function hash(s: string): number {
   let h = 2166136261;
@@ -467,20 +555,30 @@ function AgentNode(props: {
         opacity: props.dim ? "0.2" : "1",
       }}
     >
-      <span
-        class="grid place-items-center rounded-full p-[3px]"
-        style={{
-          background: props.selected ? avatarColor(props.agent.name) : "var(--surface)",
-          "box-shadow": `0 0 0 1.5px ${avatarColor(props.agent.name)}`,
-        }}
-      >
-        <Avatar name={props.agent.name} size={AGENT_R * 2 - 6} circle />
+      <span class="relative grid place-items-center">
+        <SelectionGlow on={props.selected} inset={-9} />
+        <span
+          class="relative grid place-items-center rounded-full p-[3px]"
+          style={{
+            background: "var(--surface)",
+            "box-shadow": `0 0 0 1.5px ${avatarColor(props.agent.name)}`,
+          }}
+        >
+          <Avatar name={props.agent.name} size={AGENT_R * 2 - 6} circle />
+        </span>
       </span>
-      <span class="whitespace-nowrap rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 text-[11px] font-semibold text-[var(--text)]">
-        {props.agent.name}
-        <Show when={props.count}>
-          <span class="pl-1 text-[10px] font-normal text-[var(--muted)]">{props.count}</span>
-        </Show>
+      {/* Name and role together. A canvas of bare first names tells you who is
+          here but nothing about why any of them holds the documents it does. */}
+      <span class="flex max-w-[132px] flex-col items-center rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 leading-[13px]">
+        <span class="whitespace-nowrap text-[11px] font-semibold text-[var(--text)]">
+          {props.agent.name}
+          <Show when={props.count}>
+            <span class="pl-1 text-[10px] font-normal text-[var(--muted)]">{props.count}</span>
+          </Show>
+        </span>
+        <span class="max-w-full truncate text-[9px] text-[var(--muted)]">
+          {prettyRole(props.agent.role)}
+        </span>
       </span>
     </button>
   );
@@ -509,27 +607,30 @@ function DocNode(props: {
         opacity: props.dim ? "0.15" : "1",
       }}
     >
-      <span
-        class="grid place-items-center rounded-full border transition-colors"
-        classList={{
-          "border-[var(--accent)] bg-[var(--accent-soft)]": props.selected || props.hit,
-          "border-[var(--line-strong)] bg-[var(--surface)] hover:border-[var(--accent)]":
-            !props.selected && !props.hit,
-        }}
-        style={{
-          width: `${r() * 2}px`,
-          height: `${r() * 2}px`,
-          ...(props.hit ? { "box-shadow": "0 0 0 3px var(--accent-soft)" } : {}),
-        }}
-      >
+      <span class="relative grid place-items-center">
+        <SelectionGlow on={props.selected} inset={-8} />
         <span
-          class="rounded-full"
-          style={{
-            width: `${r() * 0.55}px`,
-            height: `${r() * 0.55}px`,
-            background: props.org ? "var(--accent)" : "var(--muted)",
+          class="relative grid place-items-center rounded-full border transition-colors"
+          classList={{
+            "border-[var(--accent)] bg-[var(--accent-soft)]": props.selected || props.hit,
+            "border-[var(--line-strong)] bg-[var(--surface)] hover:border-[var(--accent)]":
+              !props.selected && !props.hit,
           }}
-        />
+          style={{
+            width: `${r() * 2}px`,
+            height: `${r() * 2}px`,
+            ...(props.hit && !props.selected ? { "box-shadow": "0 0 0 3px var(--accent-soft)" } : {}),
+          }}
+        >
+          <span
+            class="rounded-full"
+            style={{
+              width: `${r() * 0.55}px`,
+              height: `${r() * 0.55}px`,
+              background: props.org ? "var(--accent)" : "var(--muted)",
+            }}
+          />
+        </span>
       </span>
       {/* Every document says its name. Hiding the specialization tier's labels
           traded the one thing you come here to read for tidiness — a canvas of
