@@ -1,8 +1,9 @@
 import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
 import Plus from "lucide-solid/icons/plus";
+import Sparkles from "lucide-solid/icons/sparkles";
 
-import { AddAgentModal } from "~/components/add-agent-modal";
 import { NodeInspector } from "~/components/node-inspector";
+import { Tooltip } from "~/components/tooltip";
 import { OrgBuilderChat } from "~/components/org-builder-chat";
 import { OrgGraph } from "~/components/org-graph";
 import { OrgDocs } from "~/components/org-docs";
@@ -36,7 +37,6 @@ const readChatWidth = () => {
 
 export function OrgPanel() {
   const tab = (): Tab => (state.register === "knowledge" ? "docs" : "overview");
-  const [hiring, setHiring] = createSignal(false);
 
   // The same canvas is the company's chart at home and a project's Team inside
   // one — so it has to say which, or the header contradicts the row you clicked.
@@ -80,6 +80,11 @@ export function OrgPanel() {
   createEffect(() => {
     if (state.workflowView) setSelected(null);
   });
+  // Clicking a node asks for its inspector, and the inspector lives in the
+  // aside — a collapsed aside would swallow the click without this.
+  createEffect(() => {
+    if (selected()) actions.setOrgChatOpen(true);
+  });
   const [schedule, { refetch }] = createResource(
     () => state.agents.length,
     () => loadScheduleEntries(),
@@ -104,9 +109,11 @@ export function OrgPanel() {
             </div>
             <div class="text-[11.5px] text-[var(--muted)]">{heading().sub}</div>
           </div>
+          {/* Not a form any more: hiring is a sentence to AULAR, so the button
+              just opens the rail and hands you the composer. */}
           <button
             type="button"
-            onClick={() => setHiring(true)}
+            onClick={() => actions.hireAgent()}
             class="ml-auto inline-flex items-center gap-[7px] rounded-[var(--r2)] bg-[var(--text)] px-3.5 py-[9px] text-[12.5px] font-[650] text-[var(--bg)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--on-accent)]"
           >
             <Plus size={16} stroke-width={2} />
@@ -132,8 +139,26 @@ export function OrgPanel() {
       </div>
 
       {/* ── RIGHT: the builder chat (or a node's inspector), full height. Shared
-          by both tabs so Overview and Knowledge bank read as one layout. ── */}
-      <Show when={tab() === "overview" || tab() === "docs"}>
+          by both tabs so Overview and Knowledge bank read as one layout.
+          Collapsible to a slim strip — the strip keeps the rail's identity (the
+          sparkles tile) so there's always a visible way back. ── */}
+      <Show
+        when={state.orgChatOpen}
+        fallback={
+          <aside class="flex flex-none flex-col items-center border-l border-[var(--line)] px-1.5 pt-2.5">
+            <Tooltip label="Build with AULAR" side="top">
+              <button
+                type="button"
+                aria-label="Expand Build with AULAR"
+                onClick={() => actions.setOrgChatOpen(true)}
+                class="grid size-[34px] place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent-text)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--on-accent)]"
+              >
+                <Sparkles size={16} stroke-width={1.9} />
+              </button>
+            </Tooltip>
+          </aside>
+        }
+      >
         <aside
           class="relative flex flex-none flex-col border-l border-[var(--line)]"
           style={{ width: `${chatWidth()}px` }}
@@ -172,10 +197,6 @@ export function OrgPanel() {
             )}
           </Show>
         </aside>
-      </Show>
-
-      <Show when={hiring()}>
-        <AddAgentModal onClose={() => setHiring(false)} />
       </Show>
     </div>
   );

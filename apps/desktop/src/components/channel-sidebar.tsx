@@ -1,7 +1,6 @@
 import { createMemo, createSignal, onCleanup, Show } from "solid-js";
 import autoAnimate from "@formkit/auto-animate";
 
-import { AddAgentModal } from "~/components/add-agent-modal";
 import { HomeBody } from "~/components/sidebar/home-body";
 import { ProjectBody } from "~/components/sidebar/project-body";
 import { SearchPill } from "~/components/sidebar/parts";
@@ -27,7 +26,6 @@ const WIDTH_MAX = 400;
 export function ChannelSidebar(props: { onSearch: () => void }) {
   const [width, setWidth] = createSignal(readWidth());
   const [viewport, setViewport] = createSignal(window.innerWidth);
-  const [hiring, setHiring] = createSignal(false);
   const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>(readCollapsed());
 
   const toggle = (key: string) => {
@@ -138,7 +136,7 @@ export function ChannelSidebar(props: { onSearch: () => void }) {
             staff={staff()}
             collapsed={collapsed()}
             onToggle={toggle}
-            onHire={capped() ? undefined : () => setHiring(true)}
+            onHire={capped() ? undefined : () => actions.hireAgent()}
             hireLabel={capped() ? "Agent limit reached" : "Hire an agent"}
           />
         </Show>
@@ -157,9 +155,6 @@ export function ChannelSidebar(props: { onSearch: () => void }) {
         class="absolute inset-y-0 -right-0.5 z-30 w-1 cursor-col-resize transition-colors hover:bg-[var(--accent)]"
       />
 
-      <Show when={hiring()}>
-        <AddAgentModal onClose={() => setHiring(false)} />
-      </Show>
     </aside>
   );
 }

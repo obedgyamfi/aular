@@ -21,6 +21,7 @@ import type {
 import { TERMINAL_TASK_STATES } from "./types";
 import type { Proposal } from "./intent";
 import { parseWorkflowArtifact, type WorkflowArtifact } from "./workflow";
+import { focusComposer } from "./window";
 
 /**
  * The app's state.
@@ -107,6 +108,10 @@ interface State {
    *  own state because the minimap that opens it lives in messages, and a
    *  message can be read from any register — opening one is a navigation. */
   workflowView: WorkflowArtifact | null;
+
+  /** The builder rail beside the org chart — expanded by default, remembered.
+   *  Global because every "hire an agent" button in the app expands it. */
+  orgChatOpen: boolean;
 
   /** Per-agent skills and user-authored catalog entries — the config page's
    *  node graph. Frontend-only until skills get a backend model. */
@@ -241,6 +246,15 @@ function upsertProject(p: ApiProject) {
   });
 }
 
+const ORG_CHAT_OPEN_KEY = "aular-org-chat-open";
+function readOrgChatOpen(): boolean {
+  try {
+    return localStorage.getItem(ORG_CHAT_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 const [state, set] = createStore<State>({
   // The design lands you in chat — the pane carries onboarding when the org
   // is empty, so there is no separate Home.
@@ -259,6 +273,7 @@ const [state, set] = createStore<State>({
   draft: null,
   workflows: {},
   workflowView: null,
+  orgChatOpen: readOrgChatOpen(),
   agentSkills: {},
   customSkills: [],
   conversationOf: {},
@@ -476,6 +491,29 @@ export const actions = {
 
   closeWorkflow() {
     set("workflowView", null);
+  },
+
+  setOrgChatOpen(open: boolean) {
+    set("orgChatOpen", open);
+    try {
+      localStorage.setItem(ORG_CHAT_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  },
+
+  /**
+   * Every "hire an agent" button in the app lands here: the org chart with
+   * the builder rail expanded and the cursor in its composer. You describe
+   * the hire — "hire a QA engineer named Piper" — and it becomes a draft or
+   * a turn, which replaced the form-filling modal.
+   */
+  hireAgent() {
+    actions.setOrgChatOpen(true);
+    if (state.register !== "org") actions.setRegister("org");
+    // After the register switch has mounted the rail's composer, so the
+    // focus lands on the visible one (listeners run in mount order).
+    queueMicrotask(focusComposer);
   },
 
   /**

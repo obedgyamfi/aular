@@ -1,6 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 
-import { AddAgentModal } from "~/components/add-agent-modal";
 import { AgentProfileModal } from "~/components/agent-profile-modal";
 import { AuthScreen } from "~/components/auth-screen";
 import { Backdrop } from "~/components/backdrop";
@@ -36,7 +35,6 @@ import { nudgeUiScale } from "~/lib/window";
 export function App() {
   const [ready, setReady] = createSignal(false);
   const [palette, setPalette] = createSignal(false);
-  const [hiring, setHiring] = createSignal(false);
 
   onMount(async () => {
     try {
@@ -202,11 +200,8 @@ export function App() {
             <Show when={palette()}>
               <CommandPalette
                 onClose={() => setPalette(false)}
-                onHire={() => setHiring(true)}
+                onHire={() => actions.hireAgent()}
               />
-            </Show>
-            <Show when={hiring()}>
-              <AddAgentModal onClose={() => setHiring(false)} />
             </Show>
           </Show>
         </Show>

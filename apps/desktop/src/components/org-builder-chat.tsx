@@ -1,9 +1,11 @@
 import { createSignal, onMount, Show } from "solid-js";
+import PanelRightClose from "lucide-solid/icons/panel-right-close";
 import Sparkles from "lucide-solid/icons/sparkles";
 import X from "lucide-solid/icons/x";
 
 import { Composer } from "~/components/composer";
 import { MessageList } from "~/components/message-list";
+import { Tooltip } from "~/components/tooltip";
 import { describeProposal, parseIntent, type Proposal } from "~/lib/intent";
 import { applyProposal } from "~/lib/proposals";
 import { actions, state } from "~/lib/store";
@@ -90,12 +92,22 @@ export function OrgBuilderChat(props: {
         <span class="grid size-[28px] flex-none place-items-center rounded-[8px] bg-[var(--accent-soft)] text-[var(--accent-text)]">
           <Sparkles size={15} stroke-width={1.9} />
         </span>
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1">
           <div class="text-[13.5px] font-bold text-[var(--text)]">Build with AULAR</div>
           <div class="truncate text-[11px] text-[var(--muted)]">
             Describe the org — it makes the edits
           </div>
         </div>
+        <Tooltip label="Collapse" side="top">
+          <button
+            type="button"
+            aria-label="Collapse Build with AULAR"
+            onClick={() => actions.setOrgChatOpen(false)}
+            class="grid size-8 flex-none place-items-center rounded-[var(--r2)] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+          >
+            <PanelRightClose size={16} stroke-width={1.9} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* The channel timeline — the same component the chat register renders,

@@ -2,7 +2,6 @@ import { createEffect, createSignal, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
-import { AddAgentModal } from "~/components/add-agent-modal";
 import { Mark } from "~/components/logo";
 import { Modal } from "~/components/modal";
 import { ModelSettings } from "~/components/model-settings";
@@ -18,7 +17,6 @@ import { actions, state } from "~/lib/store";
  */
 export function Onboarding() {
   const [modelOpen, setModelOpen] = createSignal(false);
-  const [hireOpen, setHireOpen] = createSignal(false);
 
   // The agent runtime, read from the store — Onboarding renders in two
   // places (Home's empty state, the chat pane's), and per-instance install
@@ -125,9 +123,9 @@ export function Onboarding() {
             index={base() + 2}
             highlight={modelReady()}
             title="Hire your first agent"
-            body="Pick a role — it arrives with a persona, operating rules and tools."
+            body="Tell AULAR the role — it arrives with a persona, operating rules and tools."
             action="Hire"
-            onAction={() => setHireOpen(true)}
+            onAction={() => actions.hireAgent()}
           />
 
           <Step
@@ -150,9 +148,6 @@ export function Onboarding() {
         </Modal>
       </Show>
 
-      <Show when={hireOpen()}>
-        <AddAgentModal onClose={() => setHireOpen(false)} />
-      </Show>
     </div>
   );
 }
