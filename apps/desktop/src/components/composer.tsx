@@ -7,18 +7,16 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
-import {
-  ArrowUp,
-  FolderClock,
-  Gauge,
-  Paperclip,
-  Plus,
-  Slash,
-  Sparkles,
-  Square,
-  X,
-  Zap,
-} from "lucide-solid";
+import ArrowUp from "lucide-solid/icons/arrow-up";
+import FolderClock from "lucide-solid/icons/folder-clock";
+import Gauge from "lucide-solid/icons/gauge";
+import Paperclip from "lucide-solid/icons/paperclip";
+import Plus from "lucide-solid/icons/plus";
+import Slash from "lucide-solid/icons/slash";
+import Sparkles from "lucide-solid/icons/sparkles";
+import Square from "lucide-solid/icons/square";
+import X from "lucide-solid/icons/x";
+import Zap from "lucide-solid/icons/zap";
 
 import { CommandPane, type PaneItem } from "~/components/command-pane";
 import { api } from "~/lib/api";
@@ -45,7 +43,15 @@ import type { ConversationContext } from "~/lib/types";
  * `/status`, `/new`, `/sessions`), which the gateway short-circuits for free,
  * so nothing here is cosmetic.
  */
-export function Composer() {
+export function Composer(props: {
+  /**
+   * A chance to claim a plain-text send before it becomes an agent turn —
+   * the org rail parses quick org edits ("hire a QA engineer") into draft
+   * proposals here. Return true to keep the text out of the conversation;
+   * slash commands and sends with attachments are never offered.
+   */
+  intercept?: (text: string) => boolean;
+}) {
   const [text, setText] = createSignal("");
   const [ctx, setCtx] = createSignal<ConversationContext | null>(null);
   const [refresh, setRefresh] = createSignal(0);
@@ -178,6 +184,11 @@ export function Composer() {
   const submit = () => {
     const t = text().trim();
     if ((!t && !state.attachment) || !enabled()) return;
+    if (t && !t.startsWith("/") && !state.attachment && props.intercept?.(t)) {
+      setText("");
+      if (area) area.style.height = "auto";
+      return;
+    }
     setText("");
     if (area) area.style.height = "auto";
     void actions.send(t);

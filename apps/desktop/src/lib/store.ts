@@ -103,6 +103,11 @@ interface State {
    *  Keyed by the owning agent's id. */
   workflows: Record<string, WorkflowArtifact[]>;
 
+  /** A workflow opened onto the org canvas. Global rather than the org panel's
+   *  own state because the minimap that opens it lives in messages, and a
+   *  message can be read from any register — opening one is a navigation. */
+  workflowView: WorkflowArtifact | null;
+
   /** Per-agent skills and user-authored catalog entries — the config page's
    *  node graph. Frontend-only until skills get a backend model. */
   agentSkills: Record<string, string[]>;
@@ -253,6 +258,7 @@ const [state, set] = createStore<State>({
   activeProjectId: HOME_PROJECT.id,
   draft: null,
   workflows: {},
+  workflowView: null,
   agentSkills: {},
   customSkills: [],
   conversationOf: {},
@@ -460,6 +466,16 @@ export const actions = {
     set("register", register);
     set("profileAgentId", null);
     pushView({ register, agentId: state.activeAgentId });
+  },
+
+  /** Open a workflow on the org canvas — from its minimap in any register. */
+  openWorkflow(workflow: WorkflowArtifact) {
+    set("workflowView", workflow);
+    if (state.register !== "org") actions.setRegister("org");
+  },
+
+  closeWorkflow() {
+    set("workflowView", null);
   },
 
   /**

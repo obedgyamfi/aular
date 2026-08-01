@@ -1,9 +1,11 @@
-import { createSignal, Show } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
 
 import { Markdown } from "~/components/markdown";
 import { MediaAttachments } from "~/components/media-attachments";
+import { WorkflowPreview } from "~/components/workflow-orchestration";
 import { actions } from "~/lib/store";
 import type { Message } from "~/lib/types";
+import { parseWorkflowArtifact } from "~/lib/workflow";
 
 /**
  * A message's CONTENTS, with no chrome of its own.
@@ -33,6 +35,13 @@ export function MessageBody(props: {
   // without button support get the fallback form). Recognize it and draw a real
   // control instead of asking the user to type /approve.
   const approval = () => (!isUser() ? parseApproval(content()) : null);
+
+  // A workflow the agent posts renders as a minimap card under the prose —
+  // in every timeline the message appears in, so the org rail and the DM
+  // show the same thing. Opening it is a navigation to the org canvas.
+  const workflow = createMemo(() =>
+    !isUser() ? parseWorkflowArtifact(content()) : { text: content(), workflow: null },
+  );
 
   return (
     <Show
@@ -70,7 +79,14 @@ export function MessageBody(props: {
               stack traces, and one unbreakable token would otherwise widen the
               row and drag a scrollbar under the whole conversation. */}
           <div class="min-w-0 break-words [overflow-wrap:anywhere]">
-            <Markdown content={content()} sans />
+            <Show when={workflow().text}>
+              <Markdown content={workflow().text} sans />
+            </Show>
+            <Show when={workflow().workflow}>
+              {(w) => (
+                <WorkflowPreview workflow={w()} onOpen={(wf) => actions.openWorkflow(wf)} />
+              )}
+            </Show>
             <Show when={props.streaming}>
               <span class="aular-caret ml-0.5 inline-block h-3.5 w-[2px] bg-[var(--accent)] align-middle" />
             </Show>

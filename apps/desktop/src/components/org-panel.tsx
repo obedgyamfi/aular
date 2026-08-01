@@ -1,5 +1,5 @@
-import { createMemo, createResource, createSignal, Show } from "solid-js";
-import { Plus } from "lucide-solid";
+import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
+import Plus from "lucide-solid/icons/plus";
 
 import { AddAgentModal } from "~/components/add-agent-modal";
 import { NodeInspector } from "~/components/node-inspector";
@@ -9,8 +9,7 @@ import { OrgDocs } from "~/components/org-docs";
 import { WorkflowCanvas } from "~/components/workflow-orchestration";
 import type { Proposal } from "~/lib/intent";
 import { loadScheduleEntries, type ScheduleEntry } from "~/lib/schedules";
-import { activeProject, atHome, state } from "~/lib/store";
-import type { WorkflowArtifact } from "~/lib/workflow";
+import { actions, activeProject, atHome, state } from "~/lib/store";
 
 type Tab = "overview" | "docs";
 
@@ -74,9 +73,13 @@ export function OrgPanel() {
   // Lifted here so the builder chat can be a full-height sibling of the header:
   // the selected node, the draft proposal (previewed as ghosts on the board),
   // and the schedule join that both the trigger nodes and the inspector read.
+  // The open workflow is store state — its minimap lives in messages, which
+  // can be read from any register — and it displaces the node inspector.
   const [selected, setSelected] = createSignal<string | null>(null);
   const [proposal, setProposal] = createSignal<Proposal | null>(null);
-  const [workflow, setWorkflow] = createSignal<WorkflowArtifact | null>(null);
+  createEffect(() => {
+    if (state.workflowView) setSelected(null);
+  });
   const [schedule, { refetch }] = createResource(
     () => state.agents.length,
     () => loadScheduleEntries(),
@@ -114,11 +117,11 @@ export function OrgPanel() {
         <Show when={tab() === "overview"}>
           <div class="min-h-0 flex-1 p-6">
             <Show
-              when={workflow()}
+              when={state.workflowView}
               fallback={<OrgGraph selected={selected()} onSelect={setSelected} schedules={schedule()} />}
             >
               {(artifact) => (
-                <WorkflowCanvas workflow={artifact()} onBack={() => setWorkflow(null)} />
+                <WorkflowCanvas workflow={artifact()} onBack={() => actions.closeWorkflow()} />
               )}
             </Show>
           </div>
@@ -151,10 +154,6 @@ export function OrgPanel() {
             fallback={
               <OrgBuilderChat
                 onProposal={setProposal}
-                onWorkflow={(artifact) => {
-                  setSelected(null);
-                  setWorkflow(artifact);
-                }}
                 onApplied={() => {
                   setProposal(null);
                   void refetch();

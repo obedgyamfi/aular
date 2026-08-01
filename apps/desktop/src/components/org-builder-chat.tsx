@@ -1,20 +1,12 @@
-import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
-import { ArrowUp, Sparkles, X } from "lucide-solid";
+import { createSignal, onMount, Show } from "solid-js";
+import Sparkles from "lucide-solid/icons/sparkles";
+import X from "lucide-solid/icons/x";
 
-import { Avatar } from "~/components/avatar";
-import { Markdown } from "~/components/markdown";
-import { Thinking } from "~/components/thinking";
-import { WorkflowPreview } from "~/components/workflow-orchestration";
+import { Composer } from "~/components/composer";
+import { MessageList } from "~/components/message-list";
 import { describeProposal, parseIntent, type Proposal } from "~/lib/intent";
 import { applyProposal } from "~/lib/proposals";
-import {
-  actions,
-  activeMessages,
-  activeWorking,
-  state,
-} from "~/lib/store";
-import type { Message } from "~/lib/types";
-import { parseWorkflowArtifact, type WorkflowArtifact } from "~/lib/workflow";
+import { actions, state } from "~/lib/store";
 
 /**
  * Build the org by talking — the CrewAI-Studio pattern, on AULAR's spine.
@@ -24,18 +16,16 @@ import { parseWorkflowArtifact, type WorkflowArtifact } from "~/lib/workflow";
  * live. Quick, recognizable changes (a schedule, a reporting line, a hire) are
  * previewed as a draft with ghosts on the canvas and applied in one click;
  * anything richer is a real turn with the system agent, who builds it.
+ *
+ * The conversation itself is the SAME surface as a direct message — the
+ * channel timeline and the full composer, not a compact copy of them. This is
+ * the #aular thread, so what you read here is exactly what the chat register
+ * shows; the only thing this rail adds is the draft card, and the only thing
+ * it intercepts is a send the intent parser recognizes.
  */
 export function OrgBuilderChat(props: {
   onProposal: (p: Proposal | null) => void;
   onApplied?: () => void;
-  onWorkflow: (workflow: WorkflowArtifact) => void;
-  /**
-   * Where a recognized draft is shown. "chat" (default) draws the draft card in
-   * the rail — the Organization page, where the canvas also ghosts it. "section"
-   * hands project drafts to the section they land in (a ghost card with its own
-   * Apply), so the rail stays a conversation.
-   */
-  draftHost?: "chat" | "section";
 }) {
   const sys = () => state.agents.find((a) => a.role === "system");
 
@@ -46,25 +36,9 @@ export function OrgBuilderChat(props: {
     if (s && state.activeAgentId !== s.id) void actions.openAgent(s.id);
   });
 
-  const messages = () => activeMessages();
-
-  const [text, setText] = createSignal("");
   const [draft, setDraft] = createSignal<Proposal | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [note, setNote] = createSignal("");
-
-  let scroller: HTMLDivElement | undefined;
-  createEffect(() => {
-    messages().length;
-    activeWorking();
-    draft();
-    queueMicrotask(() => scroller?.scrollTo({ top: scroller.scrollHeight }));
-  });
-
-  // A workflow the agent posts stays a minimap inside its message (see Bubble);
-  // it must NOT auto-take-over the Overview — visiting Organization should always
-  // land on the org chart, and workflows belong as a layer on it, not a separate
-  // full-screen view. (This effect used to hijack the canvas on every mount.)
 
   const dismiss = () => {
     setDraft(null);
@@ -72,33 +46,19 @@ export function OrgBuilderChat(props: {
     setNote("");
   };
 
-  const toAgent = (t: string) => {
-    dismiss();
-    setText("");
-    void actions.send(t);
-  };
-
-  const onSend = () => {
-    const t = text().trim();
-    if (!t || busy()) return;
+  /** Claim a send the intent parser recognizes; let real turns through. */
+  const intercept = (t: string): boolean => {
     const p = parseIntent(t, state.agents, state.projects);
-    if (p.kind === "delegate") {
-      toAgent(t);
-      return;
-    }
+    if (p.kind === "delegate") return false;
     setNote("");
-    // In section mode the draft is owned by the section it lands in (a ghost
-    // there with its own Apply), so we don't also draw a card in the rail. Only
-    // kinds that HAVE a section home divert; the rest keep the rail draft card.
-    if (props.draftHost === "section" && (p.kind === "project" || p.kind === "routine")) {
-      props.onProposal(p);
-      setText("");
-      return;
-    }
-    // Otherwise preview it in the rail (draft card) + wherever onProposal points.
     setDraft(p);
     props.onProposal(p);
-    setText("");
+    return true;
+  };
+
+  const toAgent = (t: string) => {
+    dismiss();
+    void actions.send(t);
   };
 
   const applyDraft = async () => {
@@ -138,45 +98,12 @@ export function OrgBuilderChat(props: {
         </div>
       </div>
 
-      {/* conversation */}
-      <div ref={scroller} class="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <Show
-          when={messages().length}
-          fallback={
-            <div class="flex flex-col gap-2 px-1 pt-2 text-[11.5px] leading-relaxed text-[var(--muted)]">
-              <p>Try:</p>
-              <For each={SEEDS}>
-                {(s) => (
-                  <button
-                    type="button"
-                    onClick={() => setText(s)}
-                    class="rounded-[var(--r2)] border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5 text-left transition-colors hover:border-[var(--accent)]"
-                  >
-                    “{s}”
-                  </button>
-                )}
-              </For>
-            </div>
-          }
-        >
-          <div class="flex flex-col gap-2.5">
-            <For each={messages()}>
-              {(m) => (
-                <Bubble
-                  message={m}
-                  agentName={sys()?.name ?? "AULAR"}
-                  onWorkflow={props.onWorkflow}
-                />
-              )}
-            </For>
-            <Show when={activeWorking()}>
-              <Thinking agentName={sys()?.name ?? "AULAR"} />
-            </Show>
-          </div>
-        </Show>
-      </div>
+      {/* The channel timeline — the same component the chat register renders,
+          bound to the same active conversation. */}
+      <MessageList />
 
-      {/* draft + note */}
+      {/* draft + note, pinned between the timeline and the composer the way
+          the chat register pins its task strip */}
       <div class="px-3">
         <Show when={draft()}>
           {(p) => (
@@ -230,93 +157,11 @@ export function OrgBuilderChat(props: {
         </Show>
       </div>
 
-      {/* input */}
-      <div class="px-3 pb-3">
-        <div class="flex items-end gap-1.5 rounded-[var(--r4)] border border-[var(--line-strong)] bg-[var(--surface)] py-1.5 pl-3 pr-1.5 transition-colors focus-within:border-[var(--accent)]">
-          <textarea
-            rows={1}
-            value={text()}
-            onInput={(e) => {
-              setText(e.currentTarget.value);
-              e.currentTarget.style.height = "auto";
-              e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 120)}px`;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSend();
-              }
-            }}
-            placeholder="Add a role, wire a report, set a schedule…"
-            class="max-h-[120px] min-h-[22px] w-full resize-none bg-transparent py-0.5 text-[12.5px] leading-normal text-[var(--text)] outline-none placeholder:text-[var(--faint)]"
-          />
-          <button
-            type="button"
-            aria-label="Send"
-            disabled={!text().trim() || busy()}
-            onClick={onSend}
-            class="grid size-7 flex-none place-items-center rounded-full bg-[var(--accent)] text-[var(--on-accent)] transition-colors hover:bg-[var(--accent-hover)] disabled:bg-[var(--element)] disabled:text-[var(--faint)]"
-          >
-            <ArrowUp size={14} stroke-width={2.4} />
-          </button>
-        </div>
-      </div>
+      {/* The full composer — attachments, slash commands, model menu — with
+          one difference from the chat register's: the intent parser gets the
+          first look at what you send. */}
+      <Composer intercept={intercept} />
     </div>
-  );
-}
-
-const SEEDS = [
-  "Hire a QA engineer",
-  "Every weekday at 9, have AULAR brief me on overnight activity",
-  "Design a 3-person research pod reporting to a lead",
-];
-
-/** A compact conversation bubble for the narrow builder rail. */
-function Bubble(props: {
-  message: Message;
-  agentName: string;
-  onWorkflow: (workflow: WorkflowArtifact) => void;
-}) {
-  const m = () => props.message;
-  const isUser = () => m().sender_type === "user";
-  const isSystem = () => m().sender_type === "system";
-  const parsed = createMemo(() =>
-    parseWorkflowArtifact(m().content.replace(/<<<AULAR_CHUNK>>>/g, "\n\n")),
-  );
-  const content = () => parsed().text;
-
-  return (
-    <Show
-      when={!isSystem()}
-      fallback={
-        <div class="rounded-[var(--r2)] border border-[var(--line)] bg-[var(--element)] px-2.5 py-1.5 text-[11px] leading-relaxed text-[var(--muted)]">
-          <Markdown content={content()} sans />
-        </div>
-      }
-    >
-      <Show
-        when={isUser()}
-        fallback={
-          <div class="flex gap-2">
-            <Avatar name={props.agentName} size={22} circle />
-            <div class="min-w-0 flex-1 pt-0.5 text-[12.5px] leading-relaxed text-[var(--text)]">
-              <Show when={content()}>
-                <Markdown content={content()} sans />
-              </Show>
-              <Show when={parsed().workflow}>
-                {(workflow) => <WorkflowPreview workflow={workflow()} onOpen={props.onWorkflow} />}
-              </Show>
-            </div>
-          </div>
-        }
-      >
-        <div class="flex justify-end">
-          <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-[14px] rounded-br-[4px] bg-[var(--element)] px-3 py-1.5 text-[12.5px] leading-relaxed text-[var(--text-2)]">
-            {content()}
-          </div>
-        </div>
-      </Show>
-    </Show>
   );
 }
 

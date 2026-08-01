@@ -12,6 +12,12 @@ export default defineConfig({
   },
   // Tauri expects a fixed port and no automatic fallback.
   server: { port: 1420, strictPort: true },
+  // lucide-solid is imported per-icon (`lucide-solid/icons/x`), never as the
+  // barrel: a barrel import makes a cold dev server stream ~1600 icon modules
+  // one request at a time, and `optimizeDeps: { include: ["lucide-solid"] }`
+  // cannot fix it — vite-plugin-solid force-EXCLUDES every package with a
+  // `solid` export condition so it goes through the Solid compiler, and the
+  // exclude wins over any include. Verified twice.
   envPrefix: ["VITE_", "TAURI_"],
   build: {
     target: "esnext",
