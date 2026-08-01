@@ -196,7 +196,9 @@ export function OrgPanel() {
             </Show>
           }
         >
-          {(a) => <AgentProfileAside agent={a()} onClose={() => setSelected(null)} />}
+          {(a) => (
+            <AgentProfileAside agent={a()} variant="org" onClose={() => setSelected(null)} />
+          )}
         </Show>
       </div>
     </div>

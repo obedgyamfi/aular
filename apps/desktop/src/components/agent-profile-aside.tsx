@@ -1,6 +1,11 @@
 import { createMemo, createResource, For, Show } from "solid-js";
+import BookOpen from "lucide-solid/icons/book-open";
+import MessageCircle from "lucide-solid/icons/message-circle";
+import Sparkles from "lucide-solid/icons/sparkles";
+import Wrench from "lucide-solid/icons/wrench";
 import X from "lucide-solid/icons/x";
 
+import { defaultSkillsForRole } from "~/components/agent-capabilities";
 import { Avatar } from "~/components/avatar";
 import { Backdrop } from "~/components/backdrop";
 import { api } from "~/lib/api";
@@ -21,8 +26,19 @@ import type { Agent } from "~/lib/types";
  * actually stand behind (`updated_at`, labelled as the last change) rather than
  * dressing a different timestamp up as one.
  */
-export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) {
+export function AgentProfileAside(props: {
+  agent: Agent;
+  onClose: () => void;
+  /**
+   * Where the card is docked. Beside a conversation ("chat", the default) it
+   * shows your thread history; beside the org chart ("org") that would repeat
+   * the chat register's job, so instead it leads with a Chat doorway and the
+   * at-a-glance numbers — tools, skills, knowledge.
+   */
+  variant?: "chat" | "org";
+}) {
   const agent = () => props.agent;
+  const onOrg = () => props.variant === "org";
   const working = () => agentWorking(agent().id);
   const handle = () => `@${agent().name.toLowerCase().replace(/\s+/g, "")}`;
   const manager = () => agentById(agent().reports_to);
@@ -43,10 +59,26 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
   );
 
   // Every thread you've had with them. Keyed on the agent so switching DMs
-  // refetches rather than showing the last one's history.
+  // refetches rather than showing the last one's history. The org card never
+  // shows these, so it never pays for the fetch.
   const [threads] = createResource(
-    () => agent().id,
+    () => (onOrg() ? null : agent().id),
     (id) => api.listConversations(id).catch(() => null),
+  );
+
+  // The at-a-glance numbers the org card leads with. Skills fall back to the
+  // role defaults exactly as the Capabilities tab does, so the two never
+  // disagree; knowledge counts the agent's own role documents.
+  const skills = createMemo(
+    () => state.agentSkills[agent().id] ?? defaultSkillsForRole(agent().role),
+  );
+  const [docCount] = createResource(
+    () => (onOrg() ? agent().id : null),
+    (id) =>
+      api
+        .listDocuments()
+        .then((d) => (d ?? []).filter((doc) => doc.agent_profile_id === id).length)
+        .catch(() => 0),
   );
 
   return (
@@ -104,6 +136,25 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
             </p>
           </div>
 
+          {/* The org card's doorway and its dashboard: one press into the
+              conversation, and the three numbers that size an agent up —
+              beside a chat both would be redundant. */}
+          <Show when={onOrg()}>
+            <button
+              type="button"
+              onClick={() => actions.openChat(agent().id)}
+              class="flex w-full items-center justify-center gap-2 rounded-[var(--r2)] bg-[var(--accent)] bg-[image:var(--accent-grad)] py-2 text-[12.5px] font-semibold text-[var(--on-accent)] transition-all hover:brightness-110"
+            >
+              <MessageCircle size={15} stroke-width={2} />
+              Chat
+            </button>
+            <div class="grid grid-cols-3 gap-2">
+              <StatTile icon={<Wrench size={14} stroke-width={1.9} />} value={agent().default_tools?.length ?? 0} label="Tools" />
+              <StatTile icon={<Sparkles size={14} stroke-width={1.9} />} value={skills().length} label="Skills" />
+              <StatTile icon={<BookOpen size={14} stroke-width={1.9} />} value={docCount() ?? 0} label="Knowledge" />
+            </div>
+          </Show>
+
           <Show when={agent().persona?.trim()}>
             <Section label="About">
               <p class="whitespace-pre-wrap text-[12.5px] leading-[18px] text-[var(--text-2)]">
@@ -142,17 +193,17 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
 
           {/* Their place in the structure — the org chart's questions, answered
               on the card: who they answer to, who answers to them, and which
-              teams they serve on. */}
+              teams they serve on. People are faces, not strings. */}
           <Show when={manager() || reports().length || teams().length}>
             <Section label="Organization">
-              <dl class="flex flex-col gap-1.5">
+              <div class="flex flex-col gap-2">
                 <Show when={manager()}>
-                  {(m) => <Fact label="Reports to" value={m().name} />}
+                  {(m) => <PeopleRow label="Reports to" agents={[m()]} />}
                 </Show>
                 <Show when={reports().length}>
-                  <Fact
+                  <PeopleRow
                     label={reports().length === 1 ? "Direct report" : "Direct reports"}
-                    value={reports().map((a) => a.name).join(", ")}
+                    agents={reports()}
                   />
                 </Show>
                 <Show when={teams().length}>
@@ -161,7 +212,7 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
                     value={teams().map((p) => p.name).join(", ")}
                   />
                 </Show>
-              </dl>
+              </div>
             </Section>
           </Show>
 
@@ -174,10 +225,13 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
               <Show when={agent().model_backend}>
                 {(v) => <Fact label="Runtime" value={v()} mono />}
               </Show>
-              <Fact
-                label="Tools"
-                value={String(agent().default_tools?.length ?? 0)}
-              />
+              {/* The org card already says this in its Tools tile. */}
+              <Show when={!onOrg()}>
+                <Fact
+                  label="Tools"
+                  value={String(agent().default_tools?.length ?? 0)}
+                />
+              </Show>
               <Show when={agent().permission_profile}>
                 {(v) => <Fact label="Permissions" value={v()} />}
               </Show>
@@ -188,7 +242,10 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
           </Section>
 
           {/* Your history with them — the one thing Discord's panel doesn't
-              have, and the one an org actually needs. */}
+              have, and the one an org actually needs. Chat card only: beside
+              the org chart the Chat button IS the doorway, and listing threads
+              would just duplicate the register behind it. */}
+          <Show when={!onOrg()}>
           <Section label="Conversations">
             <Show
               when={threads()?.length}
@@ -230,6 +287,7 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
               </div>
             </Show>
           </Section>
+          </Show>
         </div>
       </div>
 
@@ -245,6 +303,38 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
       </div>
       </div>
     </aside>
+  );
+}
+
+/** One of the org card's three at-a-glance numbers. */
+function StatTile(props: { icon: any; value: number | string; label: string }) {
+  return (
+    <div class="flex flex-col items-center gap-0.5 rounded-[var(--r3)] bg-[var(--element)]/70 py-2">
+      <span class="text-[var(--muted)]">{props.icon}</span>
+      <span class="text-[17px] font-bold leading-5 text-[var(--text)]">{props.value}</span>
+      <span class="text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--muted)]">
+        {props.label}
+      </span>
+    </div>
+  );
+}
+
+/** A relationship row where the people are faces — avatar chips, not names. */
+function PeopleRow(props: { label: string; agents: Agent[] }) {
+  return (
+    <div class="flex items-center justify-between gap-2">
+      <span class="shrink-0 text-[11.5px] text-[var(--muted)]">{props.label}</span>
+      <span class="flex min-w-0 flex-wrap justify-end gap-1">
+        <For each={props.agents}>
+          {(a) => (
+            <span class="inline-flex max-w-full items-center gap-1.5 rounded-[var(--pill)] bg-[var(--element)] py-0.5 pl-0.5 pr-2">
+              <Avatar name={a.name} size={16} circle />
+              <span class="truncate text-[11.5px] text-[var(--text-2)]">{a.name}</span>
+            </span>
+          )}
+        </For>
+      </span>
+    </div>
   );
 }
 
