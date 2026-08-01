@@ -15,6 +15,9 @@
  * nodes — that is a few thousand cheap operations a frame, and a quadtree would
  * cost more in complexity than it saves in time.
  */
+/** How far a node may travel in one tick. See the integration step below. */
+const MAX_STEP = 4;
+
 export interface ForceNode {
   id: string;
   x: number;
@@ -67,10 +70,11 @@ export function tick(
 ): number {
   const gravity = opts.gravity ?? 0;
   const damping = opts.damping ?? 0.82;
-  // Short on purpose. Repulsion is what sets the graph's overall size now that
-  // nothing pulls inward, and every node pushing every other within 340px
-  // settled a 47-node graph eleven thousand units across.
-  const range = opts.range ?? 190;
+  // Short on purpose. Repulsion is the only thing setting the graph's overall
+  // size now that nothing pulls inward, so this is the dial that decides
+  // whether everything fits on screen at a readable zoom. 340px settled a
+  // 47-node graph eleven thousand units across; 190px, fourteen hundred.
+  const range = opts.range ?? 130;
   const range2 = range * range;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -119,7 +123,7 @@ export function tick(
     b.vy -= fy;
   }
 
-  // Gravity, damping, integrate.
+  // Gravity, damping, speed limit, integrate.
   let moved = 0;
   for (const n of nodes) {
     if (n.pinned) {
@@ -131,6 +135,19 @@ export function tick(
     n.vy -= n.y * gravity;
     n.vx *= damping;
     n.vy *= damping;
+
+    // The speed limit is load-bearing, not polish. Repulsion is finite-range
+    // and nothing pulls inward, so a node flung past that range receives no
+    // force ever again — every overshoot is permanent, and a graph seeded with
+    // neighbours on top of each other launches its first frames hard enough to
+    // freeze itself half again too wide. Capping the step keeps the layout
+    // inside the range where the forces can still negotiate.
+    const speed = Math.hypot(n.vx, n.vy);
+    if (speed > MAX_STEP) {
+      n.vx = (n.vx / speed) * MAX_STEP;
+      n.vy = (n.vy / speed) * MAX_STEP;
+    }
+
     n.x += n.vx;
     n.y += n.vy;
     moved += Math.abs(n.vx) + Math.abs(n.vy);

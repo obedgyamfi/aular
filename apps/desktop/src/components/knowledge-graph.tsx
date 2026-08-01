@@ -63,7 +63,7 @@ export function KnowledgeGraph(props: {
       items.push({ id: a.id, kind: "agent", agent: a });
       for (const d of ownDocs().get(a.id) ?? []) {
         items.push({ id: d.id, kind: "own", doc: d });
-        edges.push({ from: a.id, to: d.id, rest: 84, strength: 0.06 });
+        edges.push({ from: a.id, to: d.id, rest: 62, strength: 0.08 });
       }
     }
     // Nothing anchors anything to the middle. Every agent does read every org
@@ -78,10 +78,10 @@ export function KnowledgeGraph(props: {
     // other gives the group its own cohesion, no centre required.
     const org = orgDocs();
     for (let i = 1; i < org.length; i++) {
-      edges.push({ from: org[i - 1]!.id, to: org[i]!.id, rest: 110, strength: 0.05 });
+      edges.push({ from: org[i - 1]!.id, to: org[i]!.id, rest: 84, strength: 0.06 });
     }
     if (org.length > 2) {
-      edges.push({ from: org[org.length - 1]!.id, to: org[0]!.id, rest: 110, strength: 0.05 });
+      edges.push({ from: org[org.length - 1]!.id, to: org[0]!.id, rest: 84, strength: 0.06 });
     }
     return { items, edges };
   });
@@ -105,12 +105,13 @@ export function KnowledgeGraph(props: {
     sim = items.map((it) => {
       const was = prev.get(it.id);
       if (was) return { ...was, charge: chargeOf(it.kind) };
-      // Spread wide from the start. With no centre pull the seed is where the
-      // layout mostly stays, so a tight cluster would spend its first second
-      // being blown apart by repulsion instead of settling.
+      // With no centre pull the seed is roughly where the layout stays, so this
+      // sets the graph's footprint as much as the forces do: spread far enough
+      // that repulsion isn't fighting a pile-up, tight enough that everything
+      // fits on screen without zooming out to read it.
       const h = hash(it.id);
       const a = (h % 360) * (Math.PI / 180);
-      const r = 80 + ((h >> 9) % 360);
+      const r = 50 + ((h >> 9) % 190);
       return {
         id: it.id,
         x: Math.cos(a) * r,
