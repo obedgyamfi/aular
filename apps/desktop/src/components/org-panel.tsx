@@ -97,10 +97,10 @@ export function OrgPanel() {
   });
 
   return (
-    <div class="flex min-h-0 flex-1 overflow-hidden">
-      {/* ── LEFT: header, tabs, the tab's content ── */}
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header class="flex h-[58px] shrink-0 items-center gap-3 border-b border-[var(--line)] px-[22px]">
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* ── TOP: one header across the whole surface, so the AULAR button sits
+          ABOVE the chat panel rather than beside its top edge. ── */}
+      <header class="flex h-[58px] shrink-0 items-center gap-3 border-b border-[var(--line)] px-[22px]">
           <div>
             <div class="text-[18px] font-semibold leading-tight text-[var(--text)]" style={{ "font-family": "var(--serif)" }}>
               {heading().title}
@@ -133,35 +133,39 @@ export function OrgPanel() {
               <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">Hire an agent</span>
             </span>
           </button>
-        </header>
+      </header>
 
-        <Show when={tab() === "overview"}>
-          <div class="min-h-0 flex-1 p-6">
-            <Show
-              when={state.workflowView}
-              fallback={<OrgGraph selected={selected()} onSelect={setSelected} schedules={schedule()} />}
-            >
-              {(artifact) => (
-                <WorkflowCanvas workflow={artifact()} onBack={() => actions.closeWorkflow()} />
-              )}
-            </Show>
-          </div>
-        </Show>
-        <Show when={tab() === "docs"}>
-          <OrgDocs />
-        </Show>
-      </div>
+      <div class="flex min-h-0 min-w-0 flex-1">
+        {/* ── LEFT: the tab's content ── */}
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Show when={tab() === "overview"}>
+            <div class="min-h-0 flex-1 p-6">
+              <Show
+                when={state.workflowView}
+                fallback={<OrgGraph selected={selected()} onSelect={setSelected} schedules={schedule()} />}
+              >
+                {(artifact) => (
+                  <WorkflowCanvas workflow={artifact()} onBack={() => actions.closeWorkflow()} />
+                )}
+              </Show>
+            </div>
+          </Show>
+          <Show when={tab() === "docs"}>
+            <OrgDocs />
+          </Show>
+        </div>
 
-      {/* ── RIGHT: the builder chat (or a node's inspector), full height. Shared
-          by both tabs so Overview and Knowledge bank read as one layout. A
-          rounded panel floating beside the canvas rather than a welded column —
-          and when it's away it's gone entirely: the AULAR button in the header
-          is the way back, so no strip has to hold its place. ── */}
-      <Show when={state.orgChatOpen}>
-        <aside
-          class="relative my-3 mr-3 flex flex-none flex-col overflow-hidden rounded-[16px] border border-[var(--line)]"
-          style={{ width: `${chatWidth()}px` }}
-        >
+        {/* ── RIGHT: the builder chat (or a node's inspector), under the header
+            the AULAR button lives in. Shared by both tabs so Overview and
+            Knowledge bank read as one layout. A rounded panel floating beside
+            the canvas rather than a welded column — and when it's away it's
+            gone entirely: the AULAR button is the way back, so no strip has to
+            hold its place. ── */}
+        <Show when={state.orgChatOpen}>
+          <aside
+            class="relative my-3 mr-3 flex flex-none flex-col overflow-hidden rounded-[16px] border border-[var(--line)]"
+            style={{ width: `${chatWidth()}px` }}
+          >
           {/* drag to resize */}
           <div
             onPointerDown={startResize}
@@ -195,8 +199,9 @@ export function OrgPanel() {
               </div>
             )}
           </Show>
-        </aside>
-      </Show>
+          </aside>
+        </Show>
+      </div>
     </div>
   );
 }
