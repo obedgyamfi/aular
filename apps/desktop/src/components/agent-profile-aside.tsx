@@ -4,7 +4,7 @@ import X from "lucide-solid/icons/x";
 import { Avatar } from "~/components/avatar";
 import { Backdrop } from "~/components/backdrop";
 import { api } from "~/lib/api";
-import { actions, agentWorking, agentById, liveTasks } from "~/lib/store";
+import { actions, agentWorking, agentById, liveTasks, state } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
 /**
@@ -30,6 +30,16 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
   /** What this agent is doing right now — Discord's "Playing" card, earned. */
   const now = createMemo(() =>
     liveTasks().filter((t) => t.to_agent_profile_id === agent().id),
+  );
+
+  // Where they sit in the organization — who they answer to, who answers to
+  // them, and which project teams they're on. Read straight off the store, so
+  // the same card is correct beside a conversation and beside the org chart.
+  const reports = createMemo(() =>
+    state.agents.filter((a) => a.reports_to === agent().id),
+  );
+  const teams = createMemo(() =>
+    state.projects.filter((p) => !p.allAgents && p.team.includes(agent().id)),
   );
 
   // Every thread you've had with them. Keyed on the agent so switching DMs
@@ -130,11 +140,33 @@ export function AgentProfileAside(props: { agent: Agent; onClose: () => void }) 
             </Section>
           </Show>
 
+          {/* Their place in the structure — the org chart's questions, answered
+              on the card: who they answer to, who answers to them, and which
+              teams they serve on. */}
+          <Show when={manager() || reports().length || teams().length}>
+            <Section label="Organization">
+              <dl class="flex flex-col gap-1.5">
+                <Show when={manager()}>
+                  {(m) => <Fact label="Reports to" value={m().name} />}
+                </Show>
+                <Show when={reports().length}>
+                  <Fact
+                    label={reports().length === 1 ? "Direct report" : "Direct reports"}
+                    value={reports().map((a) => a.name).join(", ")}
+                  />
+                </Show>
+                <Show when={teams().length}>
+                  <Fact
+                    label={teams().length === 1 ? "Team" : "Teams"}
+                    value={teams().map((p) => p.name).join(", ")}
+                  />
+                </Show>
+              </dl>
+            </Section>
+          </Show>
+
           <Section label="Details">
             <dl class="flex flex-col gap-1.5">
-              <Show when={manager()}>
-                {(m) => <Fact label="Reports to" value={m().name} />}
-              </Show>
               {/* "Runtime", not "Model": model_backend holds the backend that
                   runs the agent (hermes_agent), and the actual model is chosen
                   per-conversation in the composer. Calling this the model would

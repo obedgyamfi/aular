@@ -1,13 +1,13 @@
 import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
 
+import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";
-import { NodeInspector } from "~/components/node-inspector";
 import { OrgBuilderChat } from "~/components/org-builder-chat";
 import { OrgGraph } from "~/components/org-graph";
 import { OrgDocs } from "~/components/org-docs";
 import { WorkflowCanvas } from "~/components/workflow-orchestration";
 import type { Proposal } from "~/lib/intent";
-import { loadScheduleEntries, type ScheduleEntry } from "~/lib/schedules";
+import { loadScheduleEntries } from "~/lib/schedules";
 import { actions, activeProject, atHome, state } from "~/lib/store";
 import { focusComposer } from "~/lib/window";
 
@@ -79,23 +79,14 @@ export function OrgPanel() {
   createEffect(() => {
     if (state.workflowView) setSelected(null);
   });
-  // Clicking a node asks for its inspector, and the inspector lives in the
-  // aside — a collapsed aside would swallow the click without this.
-  createEffect(() => {
-    if (selected()) actions.setOrgChatOpen(true);
-  });
   const [schedule, { refetch }] = createResource(
     () => state.agents.length,
     () => loadScheduleEntries(),
   );
-  const triggersOf = createMemo(() => {
-    const by = new Map<string, ScheduleEntry[]>();
-    for (const e of schedule() ?? []) {
-      if (!e.agentId) continue;
-      (by.get(e.agentId) ?? by.set(e.agentId, []).get(e.agentId)!).push(e);
-    }
-    return by;
-  });
+
+  const selectedAgent = createMemo(() =>
+    selected() ? state.agents.find((a) => a.id === selected()) : undefined,
+  );
 
   return (
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -171,51 +162,41 @@ export function OrgPanel() {
           </Show>
         </div>
 
-        {/* ── RIGHT: the builder chat (or a node's inspector), under the header
-            the AULAR button lives in. Shared by both tabs so Overview and
-            Knowledge bank read as one layout. A rounded panel floating beside
-            the canvas rather than a welded column — and when it's away it's
-            gone entirely: the AULAR button is the way back, so no strip has to
-            hold its place. ── */}
-        <Show when={state.orgChatOpen}>
-          <aside
-            class="relative my-3 mr-3 flex flex-none flex-col overflow-hidden rounded-[16px] border border-[var(--line)]"
-            style={{ width: `${chatWidth()}px` }}
-          >
-          {/* drag to resize */}
-          <div
-            onPointerDown={startResize}
-            title="Drag to resize"
-            class="group absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize"
-          >
-            <div class="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-[var(--accent)]" />
-          </div>
+        {/* ── RIGHT: a clicked node shows the same profile card a DM shows —
+            the chat register's column, beside a canvas instead of a timeline,
+            with the Organization section answering the chart's questions.
+            Otherwise the builder chat, a rounded panel floating beside the
+            canvas — and when it's away it's gone entirely: the AULAR button
+            is the way back, so no strip has to hold its place. ── */}
+        <Show
+          when={tab() === "overview" && selectedAgent()}
+          fallback={
+            <Show when={state.orgChatOpen}>
+              <aside
+                class="relative my-3 mr-3 flex flex-none flex-col overflow-hidden rounded-[16px] border border-[var(--line)]"
+                style={{ width: `${chatWidth()}px` }}
+              >
+                {/* drag to resize */}
+                <div
+                  onPointerDown={startResize}
+                  title="Drag to resize"
+                  class="group absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize"
+                >
+                  <div class="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-[var(--accent)]" />
+                </div>
 
-          {/* A selected node's inspector only exists on the canvas; the
-              Knowledge bank always shows the builder chat. */}
-          <Show
-            when={tab() === "overview" && selected()}
-            fallback={
-              <OrgBuilderChat
-                onProposal={setProposal}
-                onApplied={() => {
-                  setProposal(null);
-                  void refetch();
-                }}
-              />
-            }
-          >
-            {(id) => (
-              <div class="flex min-h-0 flex-1 flex-col px-3.5 pt-3.5">
-                <NodeInspector
-                  agentId={id()}
-                  triggers={triggersOf().get(id()) ?? []}
-                  onClose={() => setSelected(null)}
+                <OrgBuilderChat
+                  onProposal={setProposal}
+                  onApplied={() => {
+                    setProposal(null);
+                    void refetch();
+                  }}
                 />
-              </div>
-            )}
-          </Show>
-          </aside>
+              </aside>
+            </Show>
+          }
+        >
+          {(a) => <AgentProfileAside agent={a()} onClose={() => setSelected(null)} />}
         </Show>
       </div>
     </div>
