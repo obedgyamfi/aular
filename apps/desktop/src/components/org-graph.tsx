@@ -37,12 +37,17 @@ import type { ScheduleEntry } from "~/lib/schedules";
  * state; no hand-placed position math. The AULAR agent "patches the org" by
  * driving that state, and the canvas simply follows.
  */
-type LayerId = "capabilities" | "operations" | "activity";
-const LAYER_CHIPS: { id: LayerId; label: string; dot: string; hint: string }[] = [
-  { id: "capabilities", label: "Capabilities", dot: "#4d7658", hint: "Tools and skills on each card" },
-  { id: "operations", label: "Operations", dot: "var(--accent)", hint: "Every agent's schedules and workflows (off = only the focused one)" },
-  { id: "activity", label: "Activity", dot: "var(--green)", hint: "Live work moving between agents" },
-];
+/**
+ * The chart draws the structure and nothing else.
+ *
+ * These were three "Show" lens chips floating over the canvas — capabilities,
+ * operations, activity. This is the state they were all off in: no tool/skill
+ * chips on the cards, no live-work edges, and an agent's operations only while
+ * that agent is open. The rendering paths still stand behind these flags, so
+ * bringing a lens back is a switch rather than a rewrite.
+ */
+const SHOW_CAPABILITIES = false;
+const SHOW_ACTIVITY = false;
 
 export function OrgGraph(props: {
   selected: string | null;
@@ -69,19 +74,12 @@ export function OrgGraph(props: {
     }),
   );
 
-  const [layers, setLayers] = createSignal<Record<LayerId, boolean>>({
-    capabilities: true,
-    operations: false,
-    activity: true,
-  });
-  const on = (l: LayerId) => layers()[l];
-  const toggleLayer = (l: LayerId) => setLayers((s) => ({ ...s, [l]: !s[l] }));
-  const showOps = (agentId: string) => on("operations") || props.selected === agentId;
+  const showOps = (agentId: string) => props.selected === agentId;
 
-  // ELK is async: re-lay out whenever the spec, focus, or Operations changes.
-  const [graph] = createResource<LaidGraph, { spec: OrgSpec; focus: string | null; ops: boolean; caps: boolean }>(
-    () => ({ spec: spec(), focus: props.selected, ops: on("operations"), caps: on("capabilities") }),
-    async ({ spec }) => await layoutOrg(spec, { showOps, showCaps: on("capabilities") }),
+  // ELK is async: re-lay out whenever the spec or the focused agent changes.
+  const [graph] = createResource<LaidGraph, { spec: OrgSpec; focus: string | null }>(
+    () => ({ spec: spec(), focus: props.selected }),
+    async ({ spec }) => await layoutOrg(spec, { showOps, showCaps: SHOW_CAPABILITIES }),
   );
   const nodeById = createMemo(() => new Map((graph()?.nodes ?? []).map((n) => [n.id, n])));
 
@@ -162,10 +160,10 @@ export function OrgGraph(props: {
   // ── activity: live work moving between agents ──────────────────────────────
   // A delegation (a live task from one agent's thread to another's) draws a green
   // "packets flowing" edge from doer to doer. Derived from the task spine, gated
-  // on the Activity lens, following drags via posOf. It's an OVERLAY only — never
+  // on SHOW_ACTIVITY, following drags via posOf. It's an OVERLAY only — never
   // fed to ELK — so live work never reshapes the org.
   const activityEdges = createMemo(() => {
-    if (!on("activity")) return [];
+    if (!SHOW_ACTIVITY) return [];
     const byId = nodeById();
     const seen = new Set<string>();
     const out: { id: string; from: string; to: string }[] = [];
@@ -329,19 +327,6 @@ export function OrgGraph(props: {
         </Show>
       </div>
 
-      {/* filter lenses */}
-      <div class="absolute left-1/2 top-3 z-[5] flex -translate-x-1/2 items-center gap-1 rounded-[var(--r3)] border border-[var(--line-strong)] bg-[var(--surface)] py-1.5 pl-1 pr-1.5" style={{ "box-shadow": "var(--shadow-1)" }}>
-        <span class="px-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--faint)]">Show</span>
-        <For each={LAYER_CHIPS}>
-          {(c) => (
-            <button type="button" onClick={() => toggleLayer(c.id)} title={c.hint} aria-pressed={on(c.id)} class="inline-flex items-center gap-1.5 rounded-[var(--pill)] border px-2.5 py-[5px] text-[11.5px] font-semibold transition-colors" style={{ "border-color": on(c.id) ? "var(--line-strong)" : "var(--line)", background: on(c.id) ? "var(--element)" : "transparent", color: on(c.id) ? "var(--text)" : "var(--faint)" }}>
-              <span class="size-[7px] rounded-full" style={{ background: c.dot, opacity: on(c.id) ? "1" : "0.4" }} />
-              {c.label}
-            </button>
-          )}
-        </For>
-      </div>
-
       <Show when={graph.loading && !graph()}>
         <div class="absolute inset-0 grid place-items-center text-[12px] text-[var(--muted)]">Laying out…</div>
       </Show>
@@ -408,7 +393,7 @@ export function OrgGraph(props: {
               dragging={dragging() === ownerRefOf(n)}
               onDragStart={(e) => startNodeDrag(e, n)}
               spec={spec()}
-              showCaps={on("capabilities")}
+              showCaps={SHOW_CAPABILITIES}
               selected={props.selected === n.ref}
               dimmed={!!props.selected && n.kind !== "wf" && n.kind !== "schedule" && props.selected !== n.ref}
             />
