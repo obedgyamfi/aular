@@ -1,7 +1,44 @@
 import { createMemo, createSignal, Show } from "solid-js";
+import Brain from "lucide-solid/icons/brain";
 import ChevronDown from "lucide-solid/icons/chevron-down";
+import Eye from "lucide-solid/icons/eye";
+import FileDiff from "lucide-solid/icons/file-diff";
+import FilePen from "lucide-solid/icons/file-pen";
+import FileText from "lucide-solid/icons/file-text";
+import Globe from "lucide-solid/icons/globe";
+import ListChecks from "lucide-solid/icons/list-checks";
+import MousePointerClick from "lucide-solid/icons/mouse-pointer-click";
+import Search from "lucide-solid/icons/search";
+import SquareTerminal from "lucide-solid/icons/square-terminal";
+import Terminal from "lucide-solid/icons/terminal";
+import Wrench from "lucide-solid/icons/wrench";
 
 import type { ToolCall } from "~/lib/types";
+
+/**
+ * The glyph for a tool, by what it touches — a filesystem, a shell, a browser.
+ *
+ * Matched on the name because tools arrive from Hermes as free-form strings and
+ * new ones appear without the app being rebuilt; anything unrecognized gets the
+ * generic wrench rather than nothing, so a line never loses its left edge.
+ */
+export function toolIcon(tool: string) {
+  const t = tool.toLowerCase();
+  const size = 14;
+  const sw = 1.9;
+  if (/browser_(console|log)/.test(t)) return <SquareTerminal size={size} stroke-width={sw} />;
+  if (/browser_(vision|screenshot|see)/.test(t)) return <Eye size={size} stroke-width={sw} />;
+  if (/browser_(click|type|press)/.test(t)) return <MousePointerClick size={size} stroke-width={sw} />;
+  if (/^browser|(^|_)(web|fetch|http|navigate)/.test(t)) return <Globe size={size} stroke-width={sw} />;
+  if (/(^|_)(terminal|bash|shell|exec|run)/.test(t)) return <Terminal size={size} stroke-width={sw} />;
+  if (/(^|_)(patch|diff|apply)/.test(t)) return <FileDiff size={size} stroke-width={sw} />;
+  if (/(^|_)(write|edit|create)_?file|^write|^edit/.test(t)) return <FilePen size={size} stroke-width={sw} />;
+  if (/(^|_)(read|view|cat|open)/.test(t)) return <FileText size={size} stroke-width={sw} />;
+  if (/(^|_)(search|grep|find|glob)/.test(t)) return <Search size={size} stroke-width={sw} />;
+  if (/(^|_)memory/.test(t)) return <Brain size={size} stroke-width={sw} />;
+  if (/(^|_)(todo|task)/.test(t)) return <ListChecks size={size} stroke-width={sw} />;
+  return <Wrench size={size} stroke-width={sw} />;
+}
 
 /**
  * A tool call, as Buzz draws it: NOT a card.
@@ -53,11 +90,21 @@ export function ToolCard(props: { tool: ToolCall }) {
           "text-[var(--muted)]": !open(),
         }}
       >
-        {/* A live dot while it runs; nothing once it's settled — a finished
-            command needs no decoration, and a checkmark on every line is noise. */}
-        <Show when={running()}>
-          <span class="aular-breathe size-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
-        </Show>
+        {/* Running gets the live dot; settled gets the tool's own glyph. Never
+            both, and never a checkmark — a tick on every finished line is the
+            noise this treatment exists to avoid. */}
+        <span class="grid size-4 shrink-0 place-items-center">
+          <Show
+            when={running()}
+            fallback={
+              <span class="text-[var(--faint)] transition-colors group-hover/row:text-[var(--muted)]">
+                {toolIcon(props.tool.tool_name)}
+              </span>
+            }
+          >
+            <span class="aular-breathe size-1.5 rounded-full bg-[var(--accent)]" />
+          </Show>
+        </span>
 
         <span
           class="shrink-0 text-[13px] font-semibold transition-colors group-hover/row:text-[var(--text)]"

@@ -7,7 +7,7 @@ import { DelegationCard } from "~/components/delegation-card";
 import { SystemNote } from "~/components/message-body";
 import { MessageRow } from "~/components/message-row";
 import { Thinking } from "~/components/thinking";
-import { ToolCard } from "~/components/tool-card";
+import { ToolGroup } from "~/components/tool-group";
 import {
   activeAgent,
   activeConversationId,
@@ -36,7 +36,7 @@ const GUTTER = "w-10 shrink-0";
 
 type Item =
   | { kind: "message"; at: number; message: Message }
-  | { kind: "tool"; at: number; tool: ToolCall }
+  | { kind: "tool"; at: number; tools: ToolCall[] }
   | { kind: "delegation"; at: number; task: Task };
 
 export function MessageList() {
@@ -58,14 +58,28 @@ export function MessageList() {
     const tools = (state.toolCalls[convoId] ?? []).map((t) => ({
       kind: "tool" as const,
       at: Date.parse(t.created_at),
-      tool: t,
+      tools: [t],
     }));
     const delegations = delegationsOfConversation(convoId).map((t) => ({
       kind: "delegation" as const,
       at: Date.parse(t.created_at),
       task: t,
     }));
-    return [...msgs, ...tools, ...delegations].sort((a, b) => a.at - b.at);
+    const ordered = [...msgs, ...tools, ...delegations].sort((a, b) => a.at - b.at);
+
+    // Fold consecutive tool calls into one run. A turn that reached for a
+    // hundred tools is one action with a hundred steps, not a hundred events —
+    // and drawing it as a hundred lines buries the conversation it belongs to.
+    const folded: Item[] = [];
+    for (const it of ordered) {
+      const prev = folded[folded.length - 1];
+      if (it.kind === "tool" && prev?.kind === "tool") {
+        prev.tools.push(...it.tools);
+        continue;
+      }
+      folded.push(it);
+    }
+    return folded;
   });
 
   const byId = createMemo(() => {
@@ -166,11 +180,11 @@ export function MessageList() {
                   {/* A run gets air above it; a continuation hugs the one before. */}
                   <div class="min-w-0" classList={{ "mt-4": info().first && !info().dayBreak }}>
                     <Show when={it.kind === "tool"}>
-                      {/* A command, indented to the prose column. */}
+                      {/* A run of commands, indented to the prose column. */}
                       <div class="mx-1 flex gap-2.5 px-2 py-1">
                         <div class={GUTTER} />
                         <div class="min-w-0 flex-1">
-                          <ToolCard tool={(it as Extract<Item, { kind: "tool" }>).tool} />
+                          <ToolGroup tools={(it as Extract<Item, { kind: "tool" }>).tools} />
                         </div>
                       </div>
                     </Show>
