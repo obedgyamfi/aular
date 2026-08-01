@@ -137,7 +137,7 @@ export function ChannelSidebar(props: { onSearch: () => void }) {
             collapsed={collapsed()}
             onToggle={toggle}
             onHire={capped() ? undefined : () => actions.hireAgent()}
-            hireLabel={capped() ? "Agent limit reached" : "Hire an agent"}
+            hireLabel={capped() ? "Agent limit reached" : "Create an agent"}
           />
         </Show>
       </div>

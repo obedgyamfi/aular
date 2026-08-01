@@ -74,10 +74,10 @@ export function CommandPalette(props: { onClose: () => void; onHire: () => void 
     },
     {
       id: "hire",
-      label: "Hire an agent",
+      label: "Create an agent",
       hint: "From a role, a description, or scratch",
       icon: "plus-small",
-      keywords: "add new agent staff team",
+      keywords: "add new hire agent staff team",
       run: props.onHire,
     },
     {

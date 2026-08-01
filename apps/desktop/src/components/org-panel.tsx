@@ -132,7 +132,7 @@ export function OrgPanel() {
             <Avatar name={state.agents.find((a) => a.role === "system")?.name ?? "AULAR"} size={26} circle />
             <span class="flex flex-col items-start">
               <span class="text-[12px] font-bold leading-[15px] text-[var(--text)]">AULAR</span>
-              <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">Hire an agent</span>
+              <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">Create an agent</span>
             </span>
           </button>
       </header>

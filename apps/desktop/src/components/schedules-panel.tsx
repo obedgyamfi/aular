@@ -396,7 +396,7 @@ function NewScheduleDialog(props: { onClose: () => void; onCreated: () => void }
           when={staff().length}
           fallback={
             <p class="text-[12.5px] text-[var(--muted)]">
-              Hire an agent first — a schedule needs someone to run it.
+              Create an agent first — a schedule needs someone to run it.
             </p>
           }
         >
