@@ -2,10 +2,10 @@ import { createEffect, createMemo, createResource, createSignal, Show } from "so
 
 import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";
+import { DocEditor, DocView } from "~/components/doc-editor";
 import { KnowledgeAside } from "~/components/knowledge-aside";
 import { KnowledgeGraph } from "~/components/knowledge-graph";
 import { Modal } from "~/components/modal";
-import { DocEditor, DocView } from "~/components/org-docs";
 import { api } from "~/lib/api";
 import type { Agent, OrgDocument } from "~/lib/types";
 import { OrgBuilderChat } from "~/components/org-builder-chat";

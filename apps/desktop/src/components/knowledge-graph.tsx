@@ -1,39 +1,38 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import Maximize from "lucide-solid/icons/maximize";
 import Minus from "lucide-solid/icons/minus";
 import Plus from "lucide-solid/icons/plus";
+import Search from "lucide-solid/icons/search";
+import X from "lucide-solid/icons/x";
 
 import { Avatar, avatarColor } from "~/components/avatar";
+import { tick, type ForceEdge, type ForceNode } from "~/lib/force";
 import type { Agent, OrgDocument } from "~/lib/types";
 
 /**
- * The knowledge graph — agents as suns, their documents as planets.
+ * The knowledge graph — agents as suns, their documents in orbit.
  *
- * The organization's knowledge has two scopes and the canvas draws them as
- * what they are. A document written for one agent orbits that agent: it is
- * their specialization, and nobody else reads it. A document written for the
- * organization sits at the centre, drawn larger, with a line to every agent —
- * because that is literally who reads it.
+ * The organization's knowledge has two scopes and the canvas draws them as what
+ * they are. A document written for one agent orbits that agent: it is their
+ * specialization, and nobody else reads it. Org-wide documents gather at the
+ * centre, drawn larger, with every agent bound to them.
  *
- * Deliberately agnostic about how much of either exists. N org documents and M
- * agents with any number of their own each lay out the same way: the centre
- * cluster grows, the ring widens, the orbits pack tighter. Nothing here counts
- * on today's contents.
+ * Positions are simulated rather than solved. A radial seed puts everything in
+ * roughly the right place, then the forces let the arrangement find its own
+ * shape — clusters push apart where the page has room, orbits tighten where it
+ * doesn't, and dragging a node lets the whole graph rearrange around it.
  *
- * Layout is computed, not solved. A radial arrangement is exactly expressible
- * in trigonometry, so there is no reason to hand it to a graph engine and hope
- * it finds the shape we already know we want.
+ * Agnostic about contents: N documents and M agents behave the same way. The
+ * seed ring widens with the roster, and repulsion does the rest.
  */
-const AGENT_RADIUS = 34;
-const ORG_RADIUS = 30;
-const DOC_RADIUS = 17;
-/** The centre of the org-wide cluster: where every agent's shared-knowledge
- *  line points. A coordinate, not a node. */
-const ORG_HUB = "__org_hub__";
+const AGENT_R = 30;
+const ORG_R = 26;
+const DOC_R = 15;
+/** The centre of the org-wide cluster: a coordinate every agent binds to, not
+ *  a node anyone can click. */
+const HUB = "__hub__";
 
-type Node =
-  | { kind: "agent"; id: string; x: number; y: number; agent: Agent }
-  | { kind: "doc"; id: string; x: number; y: number; doc: OrgDocument; scope: "org" | "own" };
+type Kind = "agent" | "org" | "own";
 
 export function KnowledgeGraph(props: {
   agents: Agent[];
@@ -42,11 +41,14 @@ export function KnowledgeGraph(props: {
   onOpenAgent: (agent: Agent) => void;
   selectedId?: string | null;
 }) {
-  const [zoom, setZoom] = createSignal(0.9);
+  const [zoom, setZoom] = createSignal(0.85);
   const [pan, setPan] = createSignal({ x: 0, y: 0 });
+  const [query, setQuery] = createSignal("");
+  /** Positions, republished each tick. A fresh Map is how Solid learns of it. */
+  const [places, setPlaces] = createSignal(new Map<string, { x: number; y: number }>());
 
   const orgDocs = createMemo(() => props.documents.filter((d) => !d.agent_profile_id));
-  const docsOf = createMemo(() => {
+  const ownDocs = createMemo(() => {
     const by = new Map<string, OrgDocument[]>();
     for (const d of props.documents) {
       if (!d.agent_profile_id) continue;
@@ -55,150 +57,241 @@ export function KnowledgeGraph(props: {
     return by;
   });
 
-  /**
-   * Everything's place, in one pass.
-   *
-   * The agent ring's radius grows with the roster so neighbours never collide,
-   * and each agent's orbit grows with how much they know — a specialist with
-   * twenty documents gets a wider orbit rather than twenty overlapping dots.
-   */
-  const layout = createMemo(() => {
-    const agents = props.agents;
-    const n = Math.max(agents.length, 1);
-    const ringR = Math.max(230, n * 46);
-    const nodes: Node[] = [];
-    const edges: { id: string; from: string; to: string; scope: "org" | "own" }[] = [];
-
-    // The centre: org-wide knowledge, in a cluster of its own.
-    const org = orgDocs();
-    const orgR = org.length <= 1 ? 0 : Math.max(50, org.length * 13);
-    org.forEach((d, i) => {
-      const a = (i / org.length) * Math.PI * 2 - Math.PI / 2;
-      nodes.push({
-        kind: "doc",
-        id: d.id,
-        x: Math.cos(a) * orgR,
-        y: Math.sin(a) * orgR,
-        doc: d,
-        scope: "org",
-      });
-    });
-
-    agents.forEach((agent, i) => {
-      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const ax = Math.cos(a) * ringR;
-      const ay = Math.sin(a) * ringR;
-      nodes.push({ kind: "agent", id: agent.id, x: ax, y: ay, agent });
-
-      // Every agent reads every org document, but drawing that literally is
-      // agents × documents lines — 16 and 26 is 416, a solid grey disc that
-      // says nothing and costs a frame to paint. One line to the centre says
-      // the same thing: this agent is bound to the shared knowledge, which
-      // sits right there.
-      if (org.length) {
-        edges.push({ id: `${agent.id}-org`, from: agent.id, to: ORG_HUB, scope: "org" });
+  /** The graph's shape: what exists and what binds to what. */
+  const graph = createMemo(() => {
+    const items: { id: string; kind: Kind; agent?: Agent; doc?: OrgDocument }[] = [];
+    const edges: ForceEdge[] = [];
+    for (const d of orgDocs()) items.push({ id: d.id, kind: "org", doc: d });
+    for (const a of props.agents) {
+      items.push({ id: a.id, kind: "agent", agent: a });
+      // One binding to the shared centre. Drawing a line to every org document
+      // instead is agents x documents — 16 and 26 is 430 lines, a grey disc
+      // that says nothing and costs a frame to paint.
+      if (orgDocs().length) edges.push({ from: a.id, to: HUB, rest: 260, strength: 0.02 });
+      for (const d of ownDocs().get(a.id) ?? []) {
+        items.push({ id: d.id, kind: "own", doc: d });
+        edges.push({ from: a.id, to: d.id, rest: 84, strength: 0.06 });
       }
-
-      // Their own, orbiting them, facing away from the centre so the planets
-      // never land on top of the ring they hang off.
-      const own = docsOf().get(agent.id) ?? [];
-      const orbit = Math.max(78, own.length * 16);
-      own.forEach((d, j) => {
-        const spread = Math.PI * 1.2;
-        const t = own.length === 1 ? 0 : j / (own.length - 1) - 0.5;
-        const ang = a + t * spread;
-        nodes.push({
-          kind: "doc",
-          id: d.id,
-          x: ax + Math.cos(ang) * orbit,
-          y: ay + Math.sin(ang) * orbit,
-          doc: d,
-          scope: "own",
-        });
-        edges.push({ id: `${agent.id}-${d.id}`, from: agent.id, to: d.id, scope: "own" });
-      });
-    });
-
-    // The hub is a coordinate, not a node — nothing to click, just the point
-    // every agent's org line reaches toward.
-    const byId = new Map<string, { x: number; y: number } | Node>(
-      nodes.map((nd) => [nd.id, nd]),
-    );
-    byId.set(ORG_HUB, { x: 0, y: 0 });
-    return { nodes, edges, byId };
+    }
+    // Org documents hold the middle: a short leash to the hub keeps the cluster
+    // together while repulsion spaces its members.
+    for (const d of orgDocs()) edges.push({ from: HUB, to: d.id, rest: 90, strength: 0.06 });
+    return { items, edges };
   });
 
-  // ── pan and zoom ──────────────────────────────────────────────────────────
+  // ── the simulation ────────────────────────────────────────────────────────
+  // Kept off the reactive graph deliberately: it mutates sixty times a second,
+  // and only the published positions need to be reactive.
+  let sim: ForceNode[] = [];
+  let raf = 0;
+
+  createEffect(() => {
+    const { items, edges } = graph();
+    cancelAnimationFrame(raf);
+
+    // Seed radially. Random starts converge to the same place eventually but
+    // spend the first second visibly untangling, which reads as jank rather
+    // than physics.
+    const prev = new Map(sim.map((n) => [n.id, n]));
+    const agents = items.filter((i) => i.kind === "agent");
+    const ring = Math.max(240, agents.length * 44);
+    let ai = 0;
+    sim = items.map((it) => {
+      const was = prev.get(it.id);
+      if (was) return { ...was, charge: chargeOf(it.kind) };
+      let x = 0;
+      let y = 0;
+      if (it.kind === "agent") {
+        const a = (ai++ / Math.max(agents.length, 1)) * Math.PI * 2 - Math.PI / 2;
+        x = Math.cos(a) * ring;
+        y = Math.sin(a) * ring;
+      } else if (it.kind === "own") {
+        const owner = items.find((o) => o.id === it.doc!.agent_profile_id);
+        const oi = agents.indexOf(owner!);
+        const a = (oi / Math.max(agents.length, 1)) * Math.PI * 2 - Math.PI / 2;
+        x = Math.cos(a) * (ring + 90);
+        y = Math.sin(a) * (ring + 90);
+      } else {
+        const i = orgDocs().findIndex((d) => d.id === it.id);
+        const a = (i / Math.max(orgDocs().length, 1)) * Math.PI * 2;
+        x = Math.cos(a) * 70;
+        y = Math.sin(a) * 70;
+      }
+      return { id: it.id, x, y, vx: 0, vy: 0, charge: chargeOf(it.kind) };
+    });
+    // The hub is a real body so agents have something to orbit, but it never
+    // moves and nothing draws it.
+    sim.push({ id: HUB, x: 0, y: 0, vx: 0, vy: 0, charge: 0, pinned: true });
+
+    let frames = 0;
+    const run = () => {
+      // A budget, not a convergence test alone: a graph that never quite
+      // settles must not hold a frame loop open for the session.
+      const moved = tick(sim, edges);
+      setPlaces(new Map(sim.map((n) => [n.id, { x: n.x, y: n.y }])));
+      frames += 1;
+      if (moved > 0.6 && frames < 600) raf = requestAnimationFrame(run);
+    };
+    run();
+  });
+
+  onCleanup(() => cancelAnimationFrame(raf));
+
+  /** Nudge the simulation awake — after a drag, or when someone asks. */
+  const reheat = () => {
+    cancelAnimationFrame(raf);
+    let frames = 0;
+    const run = () => {
+      const moved = tick(sim, graph().edges);
+      setPlaces(new Map(sim.map((n) => [n.id, { x: n.x, y: n.y }])));
+      frames += 1;
+      if (moved > 0.6 && frames < 600) raf = requestAnimationFrame(run);
+    };
+    run();
+  };
+
+  // ── search ────────────────────────────────────────────────────────────────
+  // Highlight rather than filter: a document's meaning here is who it hangs
+  // off, and hiding everything else destroys exactly that.
+  const matches = createMemo(() => {
+    const q = query().trim().toLowerCase();
+    if (!q) return null;
+    const hit = new Set<string>();
+    for (const it of graph().items) {
+      const text = it.kind === "agent" ? it.agent!.name : it.doc!.title;
+      if (text.toLowerCase().includes(q)) hit.add(it.id);
+    }
+    return hit;
+  });
+  const dimmed = (id: string) => {
+    const m = matches();
+    return !!m && !m.has(id);
+  };
+
+  // ── pan, zoom, drag ───────────────────────────────────────────────────────
   let surface: HTMLDivElement | undefined;
-  const [drag, setDrag] = createSignal<{ x: number; y: number; px: number; py: number } | null>(null);
+  const [panDrag, setPanDrag] = createSignal<{ x: number; y: number; px: number; py: number } | null>(null);
+  let nodeDrag: { id: string; x: number; y: number } | null = null;
 
   const onDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
     const p = pan();
-    setDrag({ x: e.clientX, y: e.clientY, px: p.x, py: p.y });
+    setPanDrag({ x: e.clientX, y: e.clientY, px: p.x, py: p.y });
     surface?.setPointerCapture(e.pointerId);
   };
   const onMove = (e: PointerEvent) => {
-    const d = drag();
+    if (nodeDrag) {
+      const n = sim.find((s) => s.id === nodeDrag!.id);
+      if (n) {
+        n.x += (e.clientX - nodeDrag.x) / zoom();
+        n.y += (e.clientY - nodeDrag.y) / zoom();
+        nodeDrag.x = e.clientX;
+        nodeDrag.y = e.clientY;
+        setPlaces(new Map(sim.map((s) => [s.id, { x: s.x, y: s.y }])));
+      }
+      return;
+    }
+    const d = panDrag();
     if (!d) return;
     setPan({ x: d.px + (e.clientX - d.x), y: d.py + (e.clientY - d.y) });
   };
-  const onUp = () => setDrag(null);
+  const endDrag = () => {
+    if (nodeDrag) {
+      const n = sim.find((s) => s.id === nodeDrag!.id);
+      if (n) n.pinned = false;
+      nodeDrag = null;
+      reheat();
+    }
+    setPanDrag(null);
+  };
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    setZoom((z) => Math.min(2, Math.max(0.25, z * (e.deltaY < 0 ? 1.08 : 0.93))));
+    setZoom((z) => Math.min(2.2, Math.max(0.2, z * (e.deltaY < 0 ? 1.08 : 0.93))));
   };
 
-  /** Frame everything — the only reliable way back from a long drag. */
-  const fit = () => {
-    const ns = layout().nodes;
-    if (!ns.length || !surface) {
-      setPan({ x: 0, y: 0 });
-      setZoom(0.9);
-      return;
-    }
-    const pad = 90;
-    const xs = ns.map((n) => n.x);
-    const ys = ns.map((n) => n.y);
-    const w = Math.max(...xs) - Math.min(...xs) + pad * 2;
-    const h = Math.max(...ys) - Math.min(...ys) + pad * 2;
-    const r = surface.getBoundingClientRect();
-    setZoom(Math.min(2, Math.max(0.25, Math.min(r.width / w, r.height / h))));
-    setPan({
-      x: -((Math.max(...xs) + Math.min(...xs)) / 2),
-      y: -((Math.max(...ys) + Math.min(...ys)) / 2),
-    });
+  const startNodeDrag = (e: PointerEvent, id: string) => {
+    e.stopPropagation();
+    const n = sim.find((s) => s.id === id);
+    if (!n) return;
+    n.pinned = true;
+    nodeDrag = { id, x: e.clientX, y: e.clientY };
+    surface?.setPointerCapture(e.pointerId);
   };
+
+  const fit = () => {
+    const pts = [...places().values()];
+    if (!pts.length || !surface) return;
+    const pad = 110;
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const r = surface.getBoundingClientRect();
+    setZoom(
+      Math.min(2.2, Math.max(0.2, Math.min(r.width / (maxX - minX + pad * 2), r.height / (maxY - minY + pad * 2)))),
+    );
+    setPan({ x: 0, y: 0 });
+  };
+
+  const at = (id: string) => places().get(id) ?? { x: 0, y: 0 };
 
   return (
     <div
       ref={surface}
       onPointerDown={onDown}
       onPointerMove={onMove}
-      onPointerUp={onUp}
-      onPointerCancel={onUp}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
       onWheel={onWheel}
       class="relative h-full w-full cursor-grab overflow-hidden rounded-[var(--r3)] border border-[var(--line)] active:cursor-grabbing"
       style={{
-        "background-image":
-          "radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0)",
+        "background-image": "radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0)",
         "background-size": "22px 22px",
       }}
     >
-      {/* Controls, matching the org chart's so the two canvases feel like one
-          tool rather than two. */}
+      {/* Search, over the canvas rather than above it — the canvas is the
+          surface, and a toolbar band would steal height from it. */}
+      <div class="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3">
+        <div
+          class="pointer-events-auto flex w-full max-w-[340px] items-center gap-2 rounded-[var(--pill)] border border-[var(--line-strong)] bg-[var(--surface)] px-3 py-1.5"
+          style={{ "box-shadow": "var(--shadow-1)" }}
+        >
+          <Search size={14} stroke-width={2} class="shrink-0 text-[var(--muted)]" />
+          <input
+            value={query()}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            onPointerDown={(e) => e.stopPropagation()}
+            placeholder="Search knowledge"
+            class="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--text)] outline-none placeholder:text-[var(--faint)]"
+          />
+          <Show when={query()}>
+            <span class="shrink-0 text-[11px] tabular-nums text-[var(--muted)]">
+              {matches()?.size ?? 0}
+            </span>
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => setQuery("")}
+              class="grid size-5 shrink-0 place-items-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+            >
+              <X size={12} stroke-width={2.4} />
+            </button>
+          </Show>
+        </div>
+      </div>
+
       <div class="absolute left-3 top-3 z-10 flex items-center gap-1.5">
         <span
           class="inline-flex items-center gap-0.5 rounded-[var(--r2)] border border-[var(--line-strong)] bg-[var(--surface)] p-0.5"
           style={{ "box-shadow": "var(--shadow-1)" }}
         >
-          <IconBtn label="Zoom out" onClick={() => setZoom((z) => Math.max(0.25, z * 0.9))}>
+          <IconBtn label="Zoom out" onClick={() => setZoom((z) => Math.max(0.2, z * 0.9))}>
             <Minus size={14} stroke-width={2} />
           </IconBtn>
           <span class="min-w-[38px] text-center text-[11px] font-semibold text-[var(--muted)]">
             {Math.round(zoom() * 100)}%
           </span>
-          <IconBtn label="Zoom in" onClick={() => setZoom((z) => Math.min(2, z * 1.1))}>
+          <IconBtn label="Zoom in" onClick={() => setZoom((z) => Math.min(2.2, z * 1.1))}>
             <Plus size={14} stroke-width={2} />
           </IconBtn>
         </span>
@@ -219,55 +312,60 @@ export function KnowledgeGraph(props: {
           "transform-origin": "center",
         }}
       >
-        {/* Edges under everything, and never interactive: they describe the
-            nodes rather than being things themselves. */}
         <svg
           class="pointer-events-none absolute overflow-visible"
           style={{ left: "0", top: "0", width: "1px", height: "1px" }}
           aria-hidden="true"
         >
-          <For each={layout().edges}>
+          <For each={graph().edges}>
             {(e) => {
-              const a = () => layout().byId.get(e.from);
-              const b = () => layout().byId.get(e.to);
+              const a = () => at(e.from);
+              const b = () => at(e.to);
+              const owner = () => props.agents.find((x) => x.id === e.from);
+              const lit = () => {
+                const m = matches();
+                return !m || m.has(e.from) || m.has(e.to);
+              };
               return (
-                <Show when={a() && b()}>
-                  <line
-                    x1={a()!.x}
-                    y1={a()!.y}
-                    x2={b()!.x}
-                    y2={b()!.y}
-                    stroke={
-                      e.scope === "org"
-                        ? "var(--line)"
-                        : avatarColor((a() as Extract<Node, { kind: "agent" }>).agent.name)
-                    }
-                    stroke-width={e.scope === "org" ? 1 : 1.4}
-                    opacity={e.scope === "org" ? 0.35 : 0.55}
-                  />
-                </Show>
+                <line
+                  x1={a().x}
+                  y1={a().y}
+                  x2={b().x}
+                  y2={b().y}
+                  stroke={owner() ? avatarColor(owner()!.name) : "var(--line)"}
+                  stroke-width={owner() ? 1.4 : 1}
+                  opacity={lit() ? (owner() ? 0.5 : 0.3) : 0.06}
+                />
               );
             }}
           </For>
         </svg>
 
-        <For each={layout().nodes}>
-          {(n) => (
+        <For each={graph().items}>
+          {(it) => (
             <Show
-              when={n.kind === "agent"}
+              when={it.kind === "agent"}
               fallback={
                 <DocNode
-                  node={n as Extract<Node, { kind: "doc" }>}
-                  selected={props.selectedId === n.id}
-                  onOpen={() => props.onOpenDoc((n as Extract<Node, { kind: "doc" }>).doc)}
+                  doc={it.doc!}
+                  org={it.kind === "org"}
+                  pos={at(it.id)}
+                  hit={!!matches()?.has(it.id)}
+                  dim={dimmed(it.id)}
+                  selected={props.selectedId === it.id}
+                  onDrag={(e) => startNodeDrag(e, it.id)}
+                  onOpen={() => props.onOpenDoc(it.doc!)}
                 />
               }
             >
               <AgentNode
-                node={n as Extract<Node, { kind: "agent" }>}
-                selected={props.selectedId === n.id}
-                count={docsOf().get(n.id)?.length ?? 0}
-                onOpen={() => props.onOpenAgent((n as Extract<Node, { kind: "agent" }>).agent)}
+                agent={it.agent!}
+                pos={at(it.id)}
+                count={ownDocs().get(it.id)?.length ?? 0}
+                dim={dimmed(it.id)}
+                selected={props.selectedId === it.id}
+                onDrag={(e) => startNodeDrag(e, it.id)}
+                onOpen={() => props.onOpenAgent(it.agent!)}
               />
             </Show>
           )}
@@ -283,40 +381,53 @@ export function KnowledgeGraph(props: {
   );
 }
 
-/** An agent: the sun its own documents orbit. */
+/**
+ * How hard a node pushes its neighbours away.
+ *
+ * Balanced against the spring constants below, not chosen for feel: repulsion
+ * falls off as 1/d² while a spring pulls linearly, so the equilibrium distance
+ * is set by their ratio. Charges ten times these made the graph settle three
+ * thousand units across — correct physics, useless picture, and Fit answered by
+ * zooming to 25%.
+ */
+function chargeOf(kind: Kind): number {
+  return kind === "agent" ? 340 : kind === "org" ? 280 : 150;
+}
+
 function AgentNode(props: {
-  node: Extract<Node, { kind: "agent" }>;
-  selected: boolean;
+  agent: Agent;
+  pos: { x: number; y: number };
   count: number;
+  dim: boolean;
+  selected: boolean;
+  onDrag: (e: PointerEvent) => void;
   onOpen: () => void;
 }) {
   return (
     <button
       type="button"
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={props.onDrag}
       onClick={props.onOpen}
-      title={props.node.agent.name}
-      class="absolute flex flex-col items-center gap-1 transition-transform hover:z-10"
+      title={props.agent.name}
+      class="absolute flex cursor-grab flex-col items-center gap-1 transition-opacity active:cursor-grabbing hover:z-10"
       style={{
-        left: `${props.node.x}px`,
-        top: `${props.node.y}px`,
+        left: `${props.pos.x}px`,
+        top: `${props.pos.y}px`,
         transform: "translate(-50%, -50%)",
+        opacity: props.dim ? "0.2" : "1",
       }}
     >
       <span
-        class="grid place-items-center rounded-full transition-all"
+        class="grid place-items-center rounded-full p-[3px]"
         style={{
-          padding: "3px",
-          background: props.selected
-            ? avatarColor(props.node.agent.name)
-            : "var(--surface)",
-          "box-shadow": `0 0 0 1.5px ${avatarColor(props.node.agent.name)}`,
+          background: props.selected ? avatarColor(props.agent.name) : "var(--surface)",
+          "box-shadow": `0 0 0 1.5px ${avatarColor(props.agent.name)}`,
         }}
       >
-        <Avatar name={props.node.agent.name} size={AGENT_RADIUS * 2 - 6} circle />
+        <Avatar name={props.agent.name} size={AGENT_R * 2 - 6} circle />
       </span>
       <span class="whitespace-nowrap rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 text-[11px] font-semibold text-[var(--text)]">
-        {props.node.agent.name}
+        {props.agent.name}
         <Show when={props.count}>
           <span class="pl-1 text-[10px] font-normal text-[var(--muted)]">{props.count}</span>
         </Show>
@@ -325,51 +436,60 @@ function AgentNode(props: {
   );
 }
 
-/** A document. Org-wide ones are drawn larger — they are read by everyone. */
 function DocNode(props: {
-  node: Extract<Node, { kind: "doc" }>;
+  doc: OrgDocument;
+  org: boolean;
+  pos: { x: number; y: number };
+  hit: boolean;
+  dim: boolean;
   selected: boolean;
+  onDrag: (e: PointerEvent) => void;
   onOpen: () => void;
 }) {
-  const r = () => (props.node.scope === "org" ? ORG_RADIUS : DOC_RADIUS);
+  const r = () => (props.org ? ORG_R : DOC_R);
   return (
     <button
       type="button"
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={props.onDrag}
       onClick={props.onOpen}
-      title={props.node.doc.title}
-      class="absolute flex flex-col items-center gap-1 hover:z-10"
+      title={props.doc.title}
+      class="absolute flex cursor-grab flex-col items-center gap-1 transition-opacity active:cursor-grabbing hover:z-10"
       style={{
-        left: `${props.node.x}px`,
-        top: `${props.node.y}px`,
+        left: `${props.pos.x}px`,
+        top: `${props.pos.y}px`,
         transform: "translate(-50%, -50%)",
+        opacity: props.dim ? "0.15" : "1",
       }}
     >
       <span
         class="grid place-items-center rounded-full border transition-colors"
         classList={{
-          "border-[var(--accent)] bg-[var(--accent-soft)]": props.selected,
+          "border-[var(--accent)] bg-[var(--accent-soft)]": props.selected || props.hit,
           "border-[var(--line-strong)] bg-[var(--surface)] hover:border-[var(--accent)]":
-            !props.selected,
+            !props.selected && !props.hit,
         }}
-        style={{ width: `${r() * 2}px`, height: `${r() * 2}px` }}
+        style={{
+          width: `${r() * 2}px`,
+          height: `${r() * 2}px`,
+          ...(props.hit ? { "box-shadow": "0 0 0 3px var(--accent-soft)" } : {}),
+        }}
       >
         <span
           class="rounded-full"
           style={{
             width: `${r() * 0.55}px`,
             height: `${r() * 0.55}px`,
-            background:
-              props.node.scope === "org" ? "var(--accent)" : "var(--muted)",
+            background: props.org ? "var(--accent)" : "var(--muted)",
           }}
         />
       </span>
-      <span
-        class="max-w-[128px] truncate rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 text-[10.5px] text-[var(--text-2)]"
-        classList={{ "font-semibold": props.node.scope === "org" }}
-      >
-        {props.node.doc.title}
-      </span>
+      {/* A label per document is unreadable at a hundred nodes, so only the
+          org tier and search hits carry one; the rest answer on hover. */}
+      <Show when={props.org || props.hit}>
+        <span class="max-w-[128px] truncate rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 text-[10.5px] text-[var(--text-2)]">
+          {props.doc.title}
+        </span>
+      </Show>
     </button>
   );
 }
