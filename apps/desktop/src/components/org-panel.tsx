@@ -138,8 +138,10 @@ export function OrgPanel() {
       <div class="flex min-h-0 min-w-0 flex-1">
         {/* ── LEFT: the tab's content ── */}
         <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* p-3, not p-6: the canvas card and the chat panel share one 12px
+              gutter, so their tops, bottoms and the seam between them align. */}
           <Show when={tab() === "overview"}>
-            <div class="min-h-0 flex-1 p-6">
+            <div class="min-h-0 flex-1 p-3">
               <Show
                 when={state.workflowView}
                 fallback={<OrgGraph selected={selected()} onSelect={setSelected} schedules={schedule()} />}
