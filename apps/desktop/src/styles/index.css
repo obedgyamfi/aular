@@ -413,19 +413,11 @@
     animation: aular-fade 0.15s cubic-bezier(0, 0, 0.2, 1) both;
   }
 
-  /* Pressing feedback: the independent `scale` property composes with any
-     transform a button already carries (translate-centered pills survive).
-     The transition lives on the base state so the RELEASE eases too —
-     declaring it only under :active made letting go snap, which read as
-     flicker. */
-  button {
-    transition-property: scale;
-    transition-duration: 0.1s;
-    transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
-  }
-  button:active:not(:disabled) {
-    scale: 0.97;
-  }
+  /* No press-shrink. Every button used to scale to 0.97 on :active, which
+     read as the label compressing and springing back on every click — most
+     obvious on a row whose whole job is to expand something. Hover tint says
+     "clickable" and the thing opening says "clicked"; a bouncing label adds
+     nothing but motion. */
 
   .aular-think {
     animation: aular-think 1.25s ease-in-out infinite;

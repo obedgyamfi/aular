@@ -46,7 +46,7 @@ export function ToolGroup(props: { tools: ToolCall[] }) {
           type="button"
           onClick={() => setManual(!open())}
           aria-expanded={open()}
-          class="group/sum flex min-h-6 w-full max-w-full items-center gap-1.5 text-left transition-colors"
+          class="group/sum -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] max-w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-[var(--r2)] px-1.5 text-left transition-colors hover:bg-[var(--element-hover)]"
         >
           <span class="grid size-4 shrink-0 place-items-center">
             <Show

@@ -84,7 +84,7 @@ export function ToolCard(props: { tool: ToolCall }) {
         disabled={!canExpand()}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={canExpand() ? open() : undefined}
-        class="group/row flex min-h-6 w-full max-w-full items-center gap-1.5 text-left transition-colors enabled:cursor-pointer"
+        class="group/row -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] max-w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-[var(--r2)] px-1.5 text-left transition-colors enabled:cursor-pointer enabled:hover:bg-[var(--element-hover)]"
         classList={{
           "text-[var(--text)]": open(),
           "text-[var(--muted)]": !open(),
