@@ -7,10 +7,11 @@ import {
   SoulTab,
   WorkTab,
 } from "~/components/agent-profile";
-import { Avatar } from "~/components/avatar";
+import { Avatar, avatarColor } from "~/components/avatar";
 import { confirmDialog } from "~/components/confirm";
 import { Modal } from "~/components/modal";
 import { RoutinesModal } from "~/components/routines-modal";
+import { settings } from "~/lib/settings";
 import { actions, agentById, agentWorking } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
@@ -43,6 +44,10 @@ export function AgentProfileModal(props: { agent: Agent; onClose: () => void }) 
   const [routines, setRoutines] = createSignal(false);
 
   const agent = () => props.agent;
+  /** This agent's own colour when accenting is dynamic; the fixed accent
+   *  otherwise. The same rule the docked profile card follows. */
+  const tint = () =>
+    settings.dynamicAccent ? avatarColor(agent().name) : "var(--blurple)";
   const isSystem = () => agent().role === "system";
   const working = () => agentWorking(agent().id);
   const handle = () => `@${agent().name.toLowerCase().replace(/\s+/g, "")}`;
@@ -84,8 +89,7 @@ export function AgentProfileModal(props: { agent: Agent; onClose: () => void }) 
             <div
               class="aular-no-scrollbar flex h-full w-[310px] flex-col overflow-y-auto rounded-[var(--r4)] bg-[var(--sidebar)]"
               style={{
-                "background-image":
-                  "linear-gradient(180deg, color-mix(in srgb, var(--blurple) 38%, transparent) 0%, transparent 26%, transparent 62%, color-mix(in srgb, var(--blurple) 16%, transparent) 100%)",
+                "background-image": `linear-gradient(180deg, color-mix(in srgb, ${tint()} 38%, transparent) 0%, transparent 26%, transparent 62%, color-mix(in srgb, ${tint()} 16%, transparent) 100%)`,
               }}
             >
             <div class="h-[68px] shrink-0" />

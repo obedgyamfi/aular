@@ -6,9 +6,10 @@ import Wrench from "lucide-solid/icons/wrench";
 import X from "lucide-solid/icons/x";
 
 import { defaultSkillsForRole } from "~/components/agent-capabilities";
-import { Avatar } from "~/components/avatar";
+import { Avatar, avatarColor } from "~/components/avatar";
 import { Backdrop } from "~/components/backdrop";
 import { api } from "~/lib/api";
+import { settings } from "~/lib/settings";
 import { actions, agentWorking, agentById, liveTasks, state } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
@@ -39,6 +40,18 @@ export function AgentProfileAside(props: {
 }) {
   const agent = () => props.agent;
   const onOrg = () => props.variant === "org";
+
+  /**
+   * What this card's constellation and gradient are tinted with.
+   *
+   * With dynamic accenting on, it's THIS agent's own colour — read from the
+   * agent, not from `--blurple`. The global accent only tracks the agent whose
+   * chat is open, so beside the org chart it would paint whoever you last
+   * talked to over whoever you just clicked. With the toggle off, the one
+   * fixed accent applies here as it does everywhere else.
+   */
+  const tint = () =>
+    settings.dynamicAccent ? avatarColor(agent().name) : "var(--blurple)";
   const working = () => agentWorking(agent().id);
   const handle = () => `@${agent().name.toLowerCase().replace(/\s+/g, "")}`;
   const manager = () => agentById(agent().reports_to);
@@ -89,8 +102,7 @@ export function AgentProfileAside(props: {
       <div
         class="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r4)] bg-[var(--sidebar)]"
         style={{
-          "background-image":
-            "linear-gradient(180deg, color-mix(in srgb, var(--blurple) 38%, transparent) 0%, transparent 26%, transparent 62%, color-mix(in srgb, var(--blurple) 16%, transparent) 100%)",
+          "background-image": `linear-gradient(180deg, color-mix(in srgb, ${tint()} 38%, transparent) 0%, transparent 26%, transparent 62%, color-mix(in srgb, ${tint()} 16%, transparent) 100%)`,
         }}
       >
       {/* The agent's own constellation, in the agent's own colour — the same
@@ -98,7 +110,7 @@ export function AgentProfileAside(props: {
           profiles feel like seventeen people rather than one template with the
           name swapped. Held at a third strength: a panel sits closer to the eye
           than a full screen does, and wants correspondingly less. */}
-      <Backdrop strength={0.34} breathe />
+      <Backdrop strength={0.34} breathe tint={tint()} />
 
       <div class="aular-no-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto">
         {/* Banner + the portrait hanging off it, Discord's signature header.
