@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, Show } from "solid-js";
 
-import { Mark } from "~/components/logo";
+import { Avatar } from "~/components/avatar";
 import { NodeInspector } from "~/components/node-inspector";
 import { OrgBuilderChat } from "~/components/org-builder-chat";
 import { OrgGraph } from "~/components/org-graph";
@@ -107,10 +107,13 @@ export function OrgPanel() {
             </div>
             <div class="text-[11.5px] text-[var(--muted)]">{heading().sub}</div>
           </div>
-          {/* The rail's identity and its switch, in one control: the AULAR tile
-              with what talking to it is for. Closed, clicking opens the rail
-              with the cursor in its composer (hiring is a sentence, not a
-              form); open, it puts the rail away. */}
+          {/* The rail's identity and its switch, in one control: the agent's
+              own face with what talking to it is for. Closed, clicking opens
+              the rail with the cursor in its composer (hiring is a sentence,
+              not a form); open, it puts the rail away. Quiet on purpose — a
+              hairline border and a slightly darkened ground that lifts on
+              hover (and stays lifted while the rail is open); the black
+              overlay reads correctly on light and dark themes alike. */}
           <button
             type="button"
             aria-pressed={state.orgChatOpen}
@@ -118,16 +121,15 @@ export function OrgPanel() {
             onClick={() =>
               state.orgChatOpen ? actions.setOrgChatOpen(false) : actions.hireAgent()
             }
-            class="ml-auto flex items-center gap-2.5 rounded-[var(--r3)] border px-3 py-[5px] transition-colors"
+            class="ml-auto flex items-center gap-2.5 rounded-[var(--r3)] border border-[var(--line)] px-3 py-[5px] transition-colors"
             classList={{
-              "border-[var(--accent)] bg-[var(--accent-soft)]": state.orgChatOpen,
-              "border-[var(--line)] bg-[var(--surface)] hover:border-[var(--accent)]":
-                !state.orgChatOpen,
+              // Arbitrary values, not bg-black/N: the theme replaces Tailwind's
+              // palette wholesale, so palette utilities compile to nothing.
+              "bg-[rgba(0,0,0,.10)]": state.orgChatOpen,
+              "bg-[rgba(0,0,0,.25)] hover:bg-[rgba(0,0,0,.10)]": !state.orgChatOpen,
             }}
           >
-            <span class="grid size-[26px] flex-none place-items-center rounded-[8px] bg-[var(--accent)] bg-[image:var(--accent-grad)] text-[var(--on-accent)]">
-              <Mark class="h-[14px] w-auto [--v2-icon-icon-base:currentColor] [--v2-icon-icon-muted:color-mix(in_srgb,currentColor_40%,transparent)]" />
-            </span>
+            <Avatar name={state.agents.find((a) => a.role === "system")?.name ?? "AULAR"} size={26} circle />
             <span class="flex flex-col items-start">
               <span class="text-[12px] font-bold leading-[15px] text-[var(--text)]">AULAR</span>
               <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">Hire an agent</span>
