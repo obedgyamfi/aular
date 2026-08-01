@@ -4,7 +4,7 @@ import ArrowDown from "lucide-solid/icons/arrow-down";
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";
 import { DelegationGroup } from "~/components/delegation-group";
-import { SystemNote } from "~/components/message-body";
+import { SystemNote } from "~/components/system-note";
 import { MessageRow } from "~/components/message-row";
 import { Thinking } from "~/components/thinking";
 import { ToolGroup } from "~/components/tool-group";

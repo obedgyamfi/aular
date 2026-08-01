@@ -97,33 +97,6 @@ export function MessageBody(props: {
   );
 }
 
-/**
- * A platform note — a dispatch landing, a report relayed, a doc saved.
- *
- * Not a pill: a dispatch can run to several hundred words, and `rounded-full`
- * on a paragraph draws a giant lozenge with the text swimming inside it. A
- * bordered card that wraps like prose is the right shape. Only genuine
- * failures get the danger treatment, and they stay centered and loud.
- */
-export function SystemNote(props: { content: string }) {
-  const failed = () => isFailure(props.content);
-  return (
-    <div class="flex justify-center py-1.5">
-      <div
-        class="max-w-[86%] whitespace-pre-wrap break-words rounded-[var(--r3)] px-3.5 py-2 text-[12px] leading-relaxed"
-        classList={{
-          "border border-[var(--line)] bg-[var(--element)] text-left text-[var(--muted)]":
-            !failed(),
-          "border border-v2-state-border-danger bg-v2-state-bg-danger text-center text-v2-state-fg-danger":
-            failed(),
-        }}
-      >
-        {props.content}
-      </div>
-    </div>
-  );
-}
-
 export function timeLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -136,11 +109,6 @@ function snippet(text: string): string {
     .replace(/[*_~`#>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/** Only a genuine failure gets the danger color — the prototype's rule. */
-function isFailure(text: string): boolean {
-  return /^(agent unavailable|could not reach)/i.test(text.trim());
 }
 
 // ── exec approvals ───────────────────────────────────────────────────────────
