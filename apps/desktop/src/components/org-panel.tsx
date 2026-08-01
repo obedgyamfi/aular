@@ -9,6 +9,7 @@ import { WorkflowCanvas } from "~/components/workflow-orchestration";
 import type { Proposal } from "~/lib/intent";
 import { loadScheduleEntries, type ScheduleEntry } from "~/lib/schedules";
 import { actions, activeProject, atHome, state } from "~/lib/store";
+import { focusComposer } from "~/lib/window";
 
 type Tab = "overview" | "docs";
 
@@ -108,19 +109,28 @@ export function OrgPanel() {
             <div class="text-[11.5px] text-[var(--muted)]">{heading().sub}</div>
           </div>
           {/* The rail's identity and its switch, in one control: the agent's
-              own face with what talking to it is for. Closed, clicking opens
-              the rail with the cursor in its composer (hiring is a sentence,
-              not a form); open, it puts the rail away. Quiet on purpose — a
-              hairline border and a slightly darkened ground that lifts on
-              hover (and stays lifted while the rail is open); the black
-              overlay reads correctly on light and dark themes alike. */}
+              own face with what talking to it here is for — creating agents on
+              the org chart, teaching them in the Knowledge bank. Closed,
+              clicking opens the rail with the cursor in its composer (both are
+              sentences, not forms) and stays on the tab you're reading; open,
+              it puts the rail away. Quiet on purpose — a hairline border and a
+              slightly darkened ground that lifts on hover (and stays lifted
+              while the rail is open); the black overlay reads correctly on
+              light and dark themes alike. */}
           <button
             type="button"
             aria-pressed={state.orgChatOpen}
             aria-label={state.orgChatOpen ? "Hide Build with AULAR" : "Build with AULAR"}
-            onClick={() =>
-              state.orgChatOpen ? actions.setOrgChatOpen(false) : actions.hireAgent()
-            }
+            onClick={() => {
+              if (state.orgChatOpen) {
+                actions.setOrgChatOpen(false);
+                return;
+              }
+              // Not actions.hireAgent(): that navigates to the org chart, and
+              // from the Knowledge bank the rail should open right here.
+              actions.setOrgChatOpen(true);
+              queueMicrotask(focusComposer);
+            }}
             class="ml-auto flex items-center gap-2.5 rounded-[var(--r3)] border border-[var(--line)] px-3 py-[5px] transition-colors"
             classList={{
               // Arbitrary values, not bg-black/N: the theme replaces Tailwind's
@@ -132,7 +142,9 @@ export function OrgPanel() {
             <Avatar name={state.agents.find((a) => a.role === "system")?.name ?? "AULAR"} size={26} circle />
             <span class="flex flex-col items-start">
               <span class="text-[12px] font-bold leading-[15px] text-[var(--text)]">AULAR</span>
-              <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">Create an agent</span>
+              <span class="text-[10.5px] leading-[13px] text-[var(--muted)]">
+                {tab() === "docs" ? "Teach an agent" : "Create an agent"}
+              </span>
             </span>
           </button>
       </header>
