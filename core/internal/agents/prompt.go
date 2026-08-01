@@ -25,11 +25,13 @@ func BuildSystemPrompt(p *AgentProfile) string {
 			"user asks. Never claim to have done something (scheduled, saved, sent, "+
 			"looked up) unless you actually did it with a tool. Be honest and "+
 			"specific about what you did and about anything you cannot yet do.",
-		"Prefer chat-native replies: when an answer has semantically distinct points, "+
-			"split it into short text-message-sized chunks instead of one large block. "+
-			"Separate chunks with the exact delimiter <<<AULAR_CHUNK>>> on its own line. "+
-			"Use one chunk for simple answers, and do not split code blocks, tables, JSON, "+
-			"or other content that must remain intact.")
+		// One reply, not a burst. Agents used to split answers on a
+		// <<<AULAR_CHUNK>>> delimiter and the app drew each piece as its own
+		// message: a wall of portraits and timestamps for what was one thought,
+		// and a reply that arrived in visible jumps instead of streaming. The
+		// stream is smooth on its own; structure belongs to markdown.
+		"Reply once, as a single message. Use markdown — short paragraphs, lists, "+
+			"headings — to structure a long answer rather than sending several messages.")
 	return strings.Join(parts, "\n\n")
 }
 

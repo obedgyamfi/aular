@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestBuildSystemPromptIncludesAularChunkingGuidance(t *testing.T) {
+func TestBuildSystemPromptAsksForOneMessage(t *testing.T) {
 	prompt := BuildSystemPrompt(&AgentProfile{
 		Name:         "Hermes",
 		Role:         "chief_of_staff",
@@ -15,13 +15,16 @@ func TestBuildSystemPromptIncludesAularChunkingGuidance(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"Prefer chat-native replies",
-		"semantically distinct points",
-		"<<<AULAR_CHUNK>>>",
-		"do not split code blocks, tables, JSON",
+		"Reply once, as a single message",
+		"Use markdown",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
 		}
+	}
+
+	// The chunk delimiter is retired: agents must not be taught to emit it.
+	if strings.Contains(prompt, "AULAR_CHUNK") {
+		t.Fatalf("prompt still teaches the retired chunk delimiter:\n%s", prompt)
 	}
 }

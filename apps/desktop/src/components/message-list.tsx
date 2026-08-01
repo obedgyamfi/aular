@@ -12,6 +12,7 @@ import {
   activeConversationId,
   activeWorking,
   briefsOfConversation,
+  joinChunks,
   state,
 } from "~/lib/store";
 import { focusComposer } from "~/lib/window";
@@ -175,33 +176,28 @@ export function MessageList() {
                           return <SystemNote content={m.content} />;
                         }
 
-                        // A long reply arrives pre-split into chat-sized chunks;
-                        // each renders as its own row, only the first titled.
-                        const parts = () => splitChunks(m.content);
+                        // One message, one row. Replies used to arrive split on
+                        // a chunk delimiter and each piece drew its own row —
+                        // a wall of portraits for a single thought, arriving in
+                        // visible jumps. Agents no longer emit the delimiter;
+                        // threads that already contain it read as one message.
                         return (
-                          <For each={parts()}>
-                            {(part, pi) => {
-                              const isLast = () => pi() === parts().length - 1;
-                              return (
-                                <MessageRow
-                                  message={m}
-                                  contentOverride={part}
-                                  repliedTo={quoted()}
-                                  authorName={agent()?.name ?? "Agent"}
-                                  first={info().first && pi() === 0}
-                                  streaming={!!state.streaming[m.id] && isLast()}
-                                  showReplyQuote={pi() === 0}
-                                  showMedia={pi() === 0}
-                                  working={
-                                    m.sender_type !== "user" &&
-                                    activeWorking() &&
-                                    i() === items().length - 1
-                                  }
-                                  actionable={i() === items().length - 1 && isLast()}
-                                />
-                              );
-                            }}
-                          </For>
+                          <MessageRow
+                            message={m}
+                            contentOverride={joinChunks(m.content)}
+                            repliedTo={quoted()}
+                            authorName={agent()?.name ?? "Agent"}
+                            first={info().first}
+                            streaming={!!state.streaming[m.id]}
+                            showReplyQuote
+                            showMedia
+                            working={
+                              m.sender_type !== "user" &&
+                              activeWorking() &&
+                              i() === items().length - 1
+                            }
+                            actionable={i() === items().length - 1}
+                          />
                         );
                       })()}
                     </Show>
@@ -357,14 +353,6 @@ function prettyRole(role: string): string {
     .join(" ");
 }
 
-/** A long reply arrives split into chat-sized chunks. */
-function splitChunks(content: string): string[] {
-  const parts = content
-    .split("<<<AULAR_CHUNK>>>")
-    .map((p) => p.trim())
-    .filter(Boolean);
-  return parts.length ? parts : [content];
-}
 
 /**
  * Block-only replies (a dispatch, a status report) have their visible text

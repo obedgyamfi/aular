@@ -409,8 +409,27 @@ function clearWorking(convoId: string) {
  * "**Decision needed**" must read "Decision needed". Structure-only lines
  * (headings, bullets) keep their text; links keep their label.
  */
-export function previewText(content: string): string {
+/**
+ * Heal a reply stored with the retired chunk delimiter.
+ *
+ * Agents used to be told to split answers on `<<<AULAR_CHUNK>>>` and the app
+ * drew each piece as its own message. They aren't any more, but threads written
+ * before that change still carry it — as a paragraph break it reads exactly as
+ * the one message it always was. Every surface that renders stored content goes
+ * through here, or the raw marker leaks into a bubble or a preview line.
+ */
+export function joinChunks(content: string): string {
+  if (!content.includes(CHUNK_DELIMITER)) return content;
   return content
+    .split(CHUNK_DELIMITER)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+const CHUNK_DELIMITER = "<<<AULAR_CHUNK>>>";
+
+export function previewText(content: string): string {
+  return joinChunks(content)
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")

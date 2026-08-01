@@ -10,7 +10,7 @@ import { Avatar, avatarColor } from "~/components/avatar";
 import { Backdrop } from "~/components/backdrop";
 import { api } from "~/lib/api";
 import { settings } from "~/lib/settings";
-import { actions, agentWorking, agentById, liveTasks, state } from "~/lib/store";
+import { actions, agentWorking, agentById, liveTasks, previewText, state } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
 /**
@@ -288,9 +288,7 @@ export function AgentProfileAside(props: {
                       <Show when={c.last_message?.trim() || c.last_message_at}>
                         <span class="mt-0.5 truncate text-[11px] leading-4 text-[var(--faint)]">
                           {c.last_message_at ? shortDate(c.last_message_at) : ""}
-                          {c.last_message?.trim()
-                            ? ` · ${c.last_message.replace(/\s+/g, " ").trim()}`
-                            : ""}
+                          {c.last_message?.trim() ? ` · ${previewText(c.last_message)}` : ""}
                         </span>
                       </Show>
                     </button>
