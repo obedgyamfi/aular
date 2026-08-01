@@ -89,55 +89,47 @@ export function KnowledgeGraph(props: {
     const { items, edges } = graph();
     cancelAnimationFrame(raf);
 
-    // Seed radially. Random starts converge to the same place eventually but
-    // spend the first second visibly untangling, which reads as jank rather
-    // than physics.
+    // Seeded near the middle and left to sort itself out. A ring seed placed
+    // everything on a perfect circle and the forces, already near equilibrium,
+    // largely kept it there — which looked composed rather than physical. The
+    // scatter is hashed from the id rather than Math.random so a given
+    // organization lays out the same way every time it is opened.
     const prev = new Map(sim.map((n) => [n.id, n]));
-    const agents = items.filter((i) => i.kind === "agent");
-    const ring = Math.max(240, agents.length * 44);
-    let ai = 0;
     sim = items.map((it) => {
       const was = prev.get(it.id);
       if (was) return { ...was, charge: chargeOf(it.kind) };
-      let x = 0;
-      let y = 0;
-      if (it.kind === "agent") {
-        const a = (ai++ / Math.max(agents.length, 1)) * Math.PI * 2 - Math.PI / 2;
-        x = Math.cos(a) * ring;
-        y = Math.sin(a) * ring;
-      } else if (it.kind === "own") {
-        const owner = items.find((o) => o.id === it.doc!.agent_profile_id);
-        const oi = agents.indexOf(owner!);
-        const a = (oi / Math.max(agents.length, 1)) * Math.PI * 2 - Math.PI / 2;
-        x = Math.cos(a) * (ring + 90);
-        y = Math.sin(a) * (ring + 90);
-      } else {
-        const i = orgDocs().findIndex((d) => d.id === it.id);
-        const a = (i / Math.max(orgDocs().length, 1)) * Math.PI * 2;
-        x = Math.cos(a) * 70;
-        y = Math.sin(a) * 70;
-      }
-      return { id: it.id, x, y, vx: 0, vy: 0, charge: chargeOf(it.kind) };
+      const h = hash(it.id);
+      const a = (h % 360) * (Math.PI / 180);
+      const r = 40 + ((h >> 9) % 90);
+      return {
+        id: it.id,
+        x: Math.cos(a) * r,
+        y: Math.sin(a) * r,
+        vx: 0,
+        vy: 0,
+        charge: chargeOf(it.kind),
+      };
     });
     // The hub is a real body so agents have something to orbit, but it never
     // moves and nothing draws it.
     sim.push({ id: HUB, x: 0, y: 0, vx: 0, vy: 0, charge: 0, pinned: true });
 
-    let frames = 0;
-    const run = () => {
-      // A budget, not a convergence test alone: a graph that never quite
-      // settles must not hold a frame loop open for the session.
-      const moved = tick(sim, edges);
-      setPlaces(new Map(sim.map((n) => [n.id, { x: n.x, y: n.y }])));
-      frames += 1;
-      if (moved > 0.6 && frames < 600) raf = requestAnimationFrame(run);
-    };
-    run();
+    reheat();
   });
 
   onCleanup(() => cancelAnimationFrame(raf));
 
-  /** Nudge the simulation awake — after a drag, or when someone asks. */
+  /**
+   * Run the simulation until it stops moving.
+   *
+   * Keeps going while a node is held, which is what makes a dragged agent tow
+   * its documents: the pinned node follows the pointer and the springs on its
+   * edges pull the rest along every frame. Without that the children sat still
+   * until release and then teleported.
+   *
+   * The frame budget is a backstop, not the stop condition — a graph that never
+   * quite settles must not hold a frame loop open for the whole session.
+   */
   const reheat = () => {
     cancelAnimationFrame(raf);
     let frames = 0;
@@ -145,7 +137,7 @@ export function KnowledgeGraph(props: {
       const moved = tick(sim, graph().edges);
       setPlaces(new Map(sim.map((n) => [n.id, { x: n.x, y: n.y }])));
       frames += 1;
-      if (moved > 0.6 && frames < 600) raf = requestAnimationFrame(run);
+      if (nodeDrag || (moved > 0.6 && frames < 600)) raf = requestAnimationFrame(run);
     };
     run();
   };
@@ -171,7 +163,17 @@ export function KnowledgeGraph(props: {
   // ── pan, zoom, drag ───────────────────────────────────────────────────────
   let surface: HTMLDivElement | undefined;
   const [panDrag, setPanDrag] = createSignal<{ x: number; y: number; px: number; py: number } | null>(null);
-  let nodeDrag: { id: string; x: number; y: number } | null = null;
+  /**
+   * A held node, and how far it has travelled.
+   *
+   * `moved` is what separates a click from a drag. The node used to carry an
+   * onClick alongside its onPointerDown, and it never fired: grabbing the
+   * pointer for the drag means pointerup lands on the capturing element, not on
+   * the button, so the browser never synthesises a click. Opening a document or
+   * an agent is decided here instead, on release, by whether the pointer
+   * actually went anywhere.
+   */
+  let nodeDrag: { id: string; x: number; y: number; moved: number; open: () => void } | null = null;
 
   const onDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
@@ -183,11 +185,13 @@ export function KnowledgeGraph(props: {
     if (nodeDrag) {
       const n = sim.find((s) => s.id === nodeDrag!.id);
       if (n) {
-        n.x += (e.clientX - nodeDrag.x) / zoom();
-        n.y += (e.clientY - nodeDrag.y) / zoom();
+        const dx = (e.clientX - nodeDrag.x) / zoom();
+        const dy = (e.clientY - nodeDrag.y) / zoom();
+        n.x += dx;
+        n.y += dy;
+        nodeDrag.moved += Math.abs(dx) + Math.abs(dy);
         nodeDrag.x = e.clientX;
         nodeDrag.y = e.clientY;
-        setPlaces(new Map(sim.map((s) => [s.id, { x: s.x, y: s.y }])));
       }
       return;
     }
@@ -196,11 +200,14 @@ export function KnowledgeGraph(props: {
     setPan({ x: d.px + (e.clientX - d.x), y: d.py + (e.clientY - d.y) });
   };
   const endDrag = () => {
-    if (nodeDrag) {
-      const n = sim.find((s) => s.id === nodeDrag!.id);
+    const held = nodeDrag;
+    if (held) {
+      const n = sim.find((s) => s.id === held.id);
       if (n) n.pinned = false;
       nodeDrag = null;
-      reheat();
+      // A press that never travelled was someone asking to open the thing.
+      if (held.moved < 4) held.open();
+      else reheat();
     }
     setPanDrag(null);
   };
@@ -209,13 +216,24 @@ export function KnowledgeGraph(props: {
     setZoom((z) => Math.min(2.2, Math.max(0.2, z * (e.deltaY < 0 ? 1.08 : 0.93))));
   };
 
-  const startNodeDrag = (e: PointerEvent, id: string) => {
+  const startNodeDrag = (e: PointerEvent, id: string, open: () => void) => {
     e.stopPropagation();
+    e.preventDefault();
     const n = sim.find((s) => s.id === id);
     if (!n) return;
     n.pinned = true;
-    nodeDrag = { id, x: e.clientX, y: e.clientY };
-    surface?.setPointerCapture(e.pointerId);
+    nodeDrag = { id, x: e.clientX, y: e.clientY, moved: 0, open };
+    // Capture so the pointer keeps reporting to us once it leaves the node,
+    // but never let it decide whether the drag happens: it throws for a
+    // pointer the browser no longer considers active, and losing the loop
+    // below to that exception means a drag that moves nothing on screen.
+    try {
+      surface?.setPointerCapture(e.pointerId);
+    } catch {
+      /* stale pointer — the surface's own handlers still see the move */
+    }
+    // Keep ticking while held, so edges tow the neighbours along.
+    reheat();
   };
 
   const fit = () => {
@@ -317,7 +335,12 @@ export function KnowledgeGraph(props: {
           style={{ left: "0", top: "0", width: "1px", height: "1px" }}
           aria-hidden="true"
         >
-          <For each={graph().edges}>
+          {/* Only ownership is drawn. The hub edges still act on the layout —
+              they hold the ring and keep the centre together — but a spoke from
+              every agent to the middle is sixteen lines converging on a point,
+              which read as a starburst nobody asked a question about. Belonging
+              to the org tier is said by the centre cluster being the centre. */}
+          <For each={graph().edges.filter((e) => e.from !== HUB && e.to !== HUB)}>
             {(e) => {
               const a = () => at(e.from);
               const b = () => at(e.to);
@@ -333,8 +356,8 @@ export function KnowledgeGraph(props: {
                   x2={b().x}
                   y2={b().y}
                   stroke={owner() ? avatarColor(owner()!.name) : "var(--line)"}
-                  stroke-width={owner() ? 1.4 : 1}
-                  opacity={lit() ? (owner() ? 0.5 : 0.3) : 0.06}
+                  stroke-width={1.4}
+                  opacity={lit() ? 0.5 : 0.06}
                 />
               );
             }}
@@ -353,8 +376,7 @@ export function KnowledgeGraph(props: {
                   hit={!!matches()?.has(it.id)}
                   dim={dimmed(it.id)}
                   selected={props.selectedId === it.id}
-                  onDrag={(e) => startNodeDrag(e, it.id)}
-                  onOpen={() => props.onOpenDoc(it.doc!)}
+                  onDrag={(e) => startNodeDrag(e, it.id, () => props.onOpenDoc(it.doc!))}
                 />
               }
             >
@@ -364,8 +386,7 @@ export function KnowledgeGraph(props: {
                 count={ownDocs().get(it.id)?.length ?? 0}
                 dim={dimmed(it.id)}
                 selected={props.selectedId === it.id}
-                onDrag={(e) => startNodeDrag(e, it.id)}
-                onOpen={() => props.onOpenAgent(it.agent!)}
+                onDrag={(e) => startNodeDrag(e, it.id, () => props.onOpenAgent(it.agent!))}
               />
             </Show>
           )}
@@ -390,6 +411,16 @@ export function KnowledgeGraph(props: {
  * thousand units across — correct physics, useless picture, and Fit answered by
  * zooming to 25%.
  */
+/** A stable number from an id — the scatter has to be the same every launch. */
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
 function chargeOf(kind: Kind): number {
   return kind === "agent" ? 340 : kind === "org" ? 280 : 150;
 }
@@ -401,13 +432,11 @@ function AgentNode(props: {
   dim: boolean;
   selected: boolean;
   onDrag: (e: PointerEvent) => void;
-  onOpen: () => void;
 }) {
   return (
     <button
       type="button"
       onPointerDown={props.onDrag}
-      onClick={props.onOpen}
       title={props.agent.name}
       class="absolute flex cursor-grab flex-col items-center gap-1 transition-opacity active:cursor-grabbing hover:z-10"
       style={{
@@ -444,14 +473,12 @@ function DocNode(props: {
   dim: boolean;
   selected: boolean;
   onDrag: (e: PointerEvent) => void;
-  onOpen: () => void;
 }) {
   const r = () => (props.org ? ORG_R : DOC_R);
   return (
     <button
       type="button"
       onPointerDown={props.onDrag}
-      onClick={props.onOpen}
       title={props.doc.title}
       class="absolute flex cursor-grab flex-col items-center gap-1 transition-opacity active:cursor-grabbing hover:z-10"
       style={{
@@ -483,13 +510,19 @@ function DocNode(props: {
           }}
         />
       </span>
-      {/* A label per document is unreadable at a hundred nodes, so only the
-          org tier and search hits carry one; the rest answer on hover. */}
-      <Show when={props.org || props.hit}>
-        <span class="max-w-[128px] truncate rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 text-[10.5px] text-[var(--text-2)]">
-          {props.doc.title}
-        </span>
-      </Show>
+      {/* Every document says its name. Hiding the specialization tier's labels
+          traded the one thing you come here to read for tidiness — a canvas of
+          anonymous dots. Org titles sit larger because those nodes are larger;
+          the rest wrap to two lines and stop. */}
+      <span
+        class="line-clamp-2 max-w-[120px] rounded-[var(--r2)] bg-[var(--surface)]/85 px-1.5 text-center leading-[13px] text-[var(--text-2)]"
+        classList={{
+          "text-[10.5px] font-semibold": props.org,
+          "text-[9.5px]": !props.org,
+        }}
+      >
+        {props.doc.title}
+      </span>
     </button>
   );
 }
