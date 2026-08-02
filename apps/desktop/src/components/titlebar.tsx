@@ -5,11 +5,11 @@ import BookOpen from "lucide-solid/icons/book-open";
 import CalendarDays from "lucide-solid/icons/calendar-days";
 import ClipboardList from "lucide-solid/icons/clipboard-list";
 import GanttChart from "lucide-solid/icons/chart-no-axes-gantt";
-import Hash from "lucide-solid/icons/hash";
 import Network from "lucide-solid/icons/network";
 import SquareKanban from "lucide-solid/icons/square-kanban";
 import Users from "lucide-solid/icons/users";
 
+import { Avatar } from "~/components/avatar";
 import { WindowControls } from "~/components/window-controls";
 import { actions, activeAgent, atHome, canGoBack, canGoForward, state } from "~/lib/store";
 
@@ -55,8 +55,10 @@ function context(): { label: string; icon: JSX.Element } {
     default: {
       const a = activeAgent();
       if (!a) return { label: "Agents", icon: <Users {...sz} /> };
+      // The system agent is named and pictured like any other teammate here —
+      // it was the only one reduced to a hash and a lowercased name.
       return a.role === "system"
-        ? { label: a.name.toLowerCase(), icon: <Hash {...sz} /> }
+        ? { label: a.name, icon: <Avatar name={a.name} size={15} circle /> }
         : { label: a.name, icon: <Users {...sz} /> };
     }
   }

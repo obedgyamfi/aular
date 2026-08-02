@@ -2,11 +2,12 @@ import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import ChevronRight from "lucide-solid/icons/chevron-right";
-import Hash from "lucide-solid/icons/hash";
 import Plus from "lucide-solid/icons/plus";
 import Search from "lucide-solid/icons/search";
 
 import { AgentListItem } from "~/components/agent-list-item";
+import { Avatar } from "~/components/avatar";
+import { SystemTag } from "~/components/system-tag";
 import { actions, state, type Register } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
@@ -157,7 +158,7 @@ export function ChannelSection(props: { agents: Agent[]; hint?: string }) {
       <For each={props.agents}>
         {(a) => (
           <ChannelRow
-            name={a.name.toLowerCase()}
+            name={a.name}
             hint={props.hint ?? "Build the org"}
             active={state.activeAgentId === a.id && state.register === "chat"}
             unread={state.unread[a.id] ?? 0}
@@ -207,7 +208,15 @@ export function AgentsSection(props: {
   );
 }
 
-/** A `#channel` row — the hash is the affordance that says "this is a place". */
+/**
+ * The system agent's row.
+ *
+ * It used to be a bare `#` and a lowercased name, borrowed from Discord's
+ * channel affordance. But AULAR is not a room — it's the teammate who builds
+ * the organization, with a profile and a face like everyone else in the list
+ * below. So it wears its portrait, its real name, and a SYSTEM tag that says
+ * what kind of teammate it is. The tag does the work the hash was doing.
+ */
 export function ChannelRow(props: {
   name: string;
   hint?: string;
@@ -221,12 +230,12 @@ export function ChannelRow(props: {
       onClick={props.onClick}
       aria-current={props.active}
       title={props.hint || props.name}
-      class="group/ch mb-2 flex h-[36px] w-full items-center gap-1.5 rounded-[var(--r1)] px-2 text-left transition-colors hover:bg-[var(--element-hover)]"
+      class="group/ch mb-2 flex h-[36px] w-full items-center gap-2 rounded-[var(--r1)] px-2 text-left transition-colors hover:bg-[var(--element-hover)]"
       classList={{ "bg-[var(--element-active)]": props.active }}
     >
-      <Hash size={20} stroke-width={2} class="flex-none text-[var(--faint)]" />
+      <Avatar name={props.name} size={24} circle />
       <span
-        class="min-w-0 flex-1 truncate text-[16px] font-medium leading-5 transition-colors group-hover/ch:text-[var(--text)]"
+        class="min-w-0 truncate text-[15px] font-semibold leading-5 transition-colors group-hover/ch:text-[var(--text)]"
         classList={{
           "text-[var(--text)]": props.active || props.unread > 0,
           "text-[var(--muted)]": !props.active && props.unread === 0,
@@ -234,6 +243,8 @@ export function ChannelRow(props: {
       >
         {props.name}
       </span>
+      <SystemTag />
+      <span class="flex-1" />
       <Show when={props.unread > 0}>
         <span class="grid h-4 min-w-4 flex-none place-items-center rounded-[var(--pill)] bg-[var(--red)] px-1.5 text-[11px] font-bold text-white">
           {props.unread > 99 ? "99+" : props.unread}

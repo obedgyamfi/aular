@@ -1,17 +1,16 @@
 import { createMemo, createSignal, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
-import Hash from "lucide-solid/icons/hash";
 import UserRound from "lucide-solid/icons/user-round";
 
 import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";
 import { Composer } from "~/components/composer";
+import { SystemTag } from "~/components/system-tag";
 import { Tooltip } from "~/components/tooltip";
 import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
 import { Onboarding } from "~/components/onboarding";
 import { RoutinesModal } from "~/components/routines-modal";
-import { SessionMenu } from "~/components/session-menu";
 import { TaskStrip } from "~/components/task-state";
 import {
   actions,
@@ -103,27 +102,30 @@ export function ChatPane() {
                   something that never changes. The profile has its own toggle
                   two icons to the right. */}
               <div class="flex min-w-0 flex-1 items-center gap-2">
-                {/* A channel gets a hash, a teammate gets their face — the same
-                    distinction the sidebar draws, so the header confirms which
-                    kind of place you're in rather than repeating its name. */}
-                <span class="flex shrink-0 items-center text-[var(--muted)]">
-                  <Show
-                    when={agent().role === "system"}
-                    fallback={<Avatar name={agent().name} size={24} circle />}
-                  >
-                    <Hash size={18} stroke-width={2.2} />
-                  </Show>
+                {/* Everyone gets their face, AULAR included. It used to get a
+                    hash and a lowercased name — the channel idiom — which said
+                    "room" about the one teammate that builds the org for you. */}
+                <span class="flex shrink-0 items-center">
+                  <Avatar name={agent().name} size={24} circle />
                 </span>
                 <h1 class="shrink-0 truncate text-[16px] font-semibold leading-6 tracking-tight text-[var(--text)]">
-                  {agent().role === "system"
-                    ? agent().name.toLowerCase()
-                    : agent().name}
+                  {agent().name}
                 </h1>
-                {/* Discord's rule between a channel's name and its topic. */}
-                <span aria-hidden="true" class="h-5 w-px shrink-0 bg-[var(--line)]" />
-                <span class="min-w-0 truncate text-[13px] leading-5 text-[var(--muted)]">
-                  {prettyRole(agent().role)}
-                </span>
+                {/* The system agent says what it is with a tag; a hire says it
+                    with its role, after Discord's rule. */}
+                <Show
+                  when={agent().role === "system"}
+                  fallback={
+                    <>
+                      <span aria-hidden="true" class="h-5 w-px shrink-0 bg-[var(--line)]" />
+                      <span class="min-w-0 truncate text-[13px] leading-5 text-[var(--muted)]">
+                        {prettyRole(agent().role)}
+                      </span>
+                    </>
+                  }
+                >
+                  <SystemTag size="md" />
+                </Show>
               </div>
 
               {/* Live state as a small badge, and only when there IS state. */}
@@ -138,9 +140,6 @@ export function ChatPane() {
               </Show>
 
               <div class="flex shrink-0 items-center gap-1">
-                {/* Sessions: one agent, many threads. */}
-                <SessionMenu agent={agent()} />
-
                 <Tooltip label="Scheduled work" side="top">
                   <button
                     type="button"
@@ -201,9 +200,9 @@ export function ChatPane() {
                 <Composer />
               </div>
               {/* Discord swaps this column by context — member list in a
-                  channel, profile in a DM. We don't: #aular is a channel, but
-                  it's still one agent you're talking to, and its profile is the
-                  same thing every other agent shows here. A roster of everyone
+                  channel, profile in a DM. We don't: every thread here is one
+                  agent you're talking to — AULAR included — and its profile is
+                  the same thing every other agent shows. A roster of everyone
                   belongs on the org chart, not beside a conversation. */}
               <Show when={profileOpen()}>
                 <AgentProfileAside agent={agent()} onClose={toggleProfile} />

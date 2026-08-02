@@ -460,6 +460,44 @@ async function loadThread(convoId: string) {
   set("toolCalls", convoId, (tools ?? []).slice().reverse());
 }
 
+/**
+ * Name a thread after its opening line.
+ *
+ * A new session starts untitled, which is honest but useless — a switcher full
+ * of "Untitled thread" tells you nothing about which one you want. So the first
+ * thing you say to an agent becomes the thread's name, the way every chat app
+ * does it. Only the first: after that the title is yours, and re-deriving it on
+ * every turn would rewrite a name you had deliberately chosen (or that the
+ * opening question earned) each time the subject drifted.
+ */
+function nameThreadFromFirstTurn(agentId: string, convoId: string, content: string) {
+  const thread = (state.threads[agentId] ?? []).find((c) => c.id === convoId);
+  if (!thread || thread.title?.trim()) return;
+  const title = titleFrom(content);
+  if (!title) return;
+  return actions.renameConversation(convoId, title);
+}
+
+/**
+ * A thread name from a message: its first sentence, trimmed to fit the rail.
+ *
+ * Cut at a word boundary rather than mid-token — a title ending "how do I conf…"
+ * reads as truncated, one ending "how do I…" reads as a title.
+ */
+function titleFrom(content: string): string {
+  // A gateway command isn't a subject. "/status" as a thread name says nothing
+  // about the thread, and since a title is only derived once, it would stick.
+  if (content.trim().startsWith("/")) return "";
+  const flat = previewText(content);
+  if (!flat) return "";
+  const sentence = /^(.{0,60}?[.!?])(?:\s|$)/.exec(flat)?.[1];
+  const line = (sentence ?? flat).replace(/[.!?,;:\s]+$/, "");
+  if (line.length <= 52) return line;
+  const cut = line.slice(0, 52);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 24 ? cut.slice(0, space) : cut).replace(/[,;:]$/, "")}…`;
+}
+
 /** The chat list's subtitle. An older event must never overwrite a newer one. */
 function bumpPreview(agentId: string, msg: Message) {
   const current = state.preview[agentId];
@@ -956,6 +994,7 @@ export const actions = {
     try {
       const { user_message } = await api.sendMessage(convoId, content, replyTo, media);
       if (user_message) upsertMessage(convoId, user_message);
+      void nameThreadFromFirstTurn(agentId, convoId, content);
     } catch (e) {
       set("working", convoId, false);
       set("error", (e as Error).message);
@@ -967,6 +1006,36 @@ export const actions = {
       await api.deleteMessage(m.conversation_id, m.id);
     } catch (e) {
       set("error", (e as Error).message);
+    }
+  },
+
+  /**
+   * Delete a selection of messages.
+   *
+   * In parallel, and tolerant of partial failure: clearing twenty messages one
+   * request-and-round-trip at a time is slow enough to watch, and one 404 in the
+   * middle (something already gone) must not strand the other nineteen. Rows are
+   * dropped locally as they succeed rather than waiting on `message.deleted` —
+   * with a bulk action you want the list to empty as you watch, and the socket
+   * event that follows filters an id that is already gone.
+   */
+  async deleteMessages(msgs: Message[]) {
+    const results = await Promise.allSettled(
+      msgs.map(async (m) => {
+        await api.deleteMessage(m.conversation_id, m.id);
+        set("messages", m.conversation_id, (list) =>
+          (list ?? []).filter((x) => x.id !== m.id),
+        );
+      }),
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed) {
+      set(
+        "error",
+        failed === msgs.length
+          ? "Those messages could not be deleted."
+          : `${failed} of ${msgs.length} messages could not be deleted.`,
+      );
     }
   },
 

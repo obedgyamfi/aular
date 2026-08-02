@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 
 import { ToolCard, toolIcon } from "~/components/tool-card";
@@ -13,10 +13,11 @@ import type { ToolCall } from "~/lib/types";
  * pattern assistant-ui's ToolGroup and the AI SDK's Tool both landed on: status
  * as a signal, detail one click away.
  *
- * While the turn is live the group opens itself and names the tool currently
- * running, so you can watch the work happen; when the turn settles it closes
- * again. That auto-close is deliberate — a finished run is history, and history
- * belongs folded up.
+ * Closed until you open it, live or settled. It used to unfold itself while the
+ * turn was running, so a burst of eleven searches drew eleven near-identical
+ * lines through the middle of the conversation and pushed the reply off screen.
+ * The summary line already carries the signal — that work is happening, and
+ * which tool is going — and it stays put whether the run has one step or fifty.
  *
  * No durations: a ToolCall carries `created_at` and nothing that says when it
  * finished, so any elapsed time shown here would be invented.
@@ -25,14 +26,9 @@ export function ToolGroup(props: { tools: ToolCall[] }) {
   const running = createMemo(() => props.tools.some((t) => t.status === "running"));
   const current = createMemo(() => props.tools.find((t) => t.status === "running"));
 
-  // Manual intent wins over the automatic open/close, until the run's state
-  // changes again — otherwise closing a live group would immediately reopen it.
-  const [manual, setManual] = createSignal<boolean | null>(null);
-  createEffect(() => {
-    running();
-    setManual(null);
-  });
-  const open = () => manual() ?? running();
+  // One piece of state: did you open it. Nothing reopens or recloses it behind
+  // your back — a group you opened to read stays open when the run finishes.
+  const [open, setOpen] = createSignal(false);
 
   // A single call is not a "group": it reads as itself, with no summary line
   // to open first.
@@ -44,7 +40,7 @@ export function ToolGroup(props: { tools: ToolCall[] }) {
       <div class="not-prose w-full">
         <button
           type="button"
-          onClick={() => setManual(!open())}
+          onClick={() => setOpen(!open())}
           aria-expanded={open()}
           class="group/sum -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] max-w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-[var(--r2)] px-1.5 text-left transition-colors hover:bg-[var(--element-hover)]"
         >

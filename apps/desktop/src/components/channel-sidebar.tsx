@@ -110,7 +110,7 @@ export function ChannelSidebar(props: { onSearch: () => void }) {
       style={{ width: `${effectiveWidth()}px` }}
     >
       <SearchPill
-        placeholder={atHome() ? "Find an agent or channel" : `Search ${title()}`}
+        placeholder={atHome() ? "Find an agent" : `Search ${title()}`}
         onOpen={props.onSearch}
       />
 

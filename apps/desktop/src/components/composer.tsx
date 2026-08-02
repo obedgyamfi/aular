@@ -348,14 +348,12 @@ export function Composer(props: {
             onKeyUp={syncCaret}
             onClick={syncCaret}
             onSelect={syncCaret}
-            // Discord's exact phrasing: "Message #channel" for a channel,
-            // "Message @name" for a DM — the placeholder names where you're
-            // about to speak, which is orientation, not decoration.
+            // Discord's phrasing, minus the channel case: "Message @name",
+            // because everyone here is someone you address — the system agent
+            // was the last place the app still called a teammate a room.
             placeholder={
               enabled()
-                ? activeAgent()?.role === "system"
-                  ? `Message #${activeAgent()!.name.toLowerCase()}`
-                  : `Message @${activeAgent()?.name ?? ""}`
+                ? `Message @${activeAgent()?.name ?? ""}`
                 : "Select an agent first"
             }
             class="max-h-[260px] min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-[11px] text-[14px] leading-5 text-[var(--text)] outline-none placeholder:text-[var(--faint)] disabled:opacity-60"

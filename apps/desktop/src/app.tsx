@@ -167,8 +167,8 @@ export function App() {
             <Show when={state.register === "org" || state.register === "knowledge"}>
               <div class="aular-rise flex min-h-0 min-w-0 flex-1"><OrgPanel /></div>
             </Show>
-            {/* No builder chat docked beside these any more: the AULAR agent is
-                a channel in the sidebar, and a channel is a place you go — not
+            {/* No builder chat docked beside these any more: AULAR sits at the
+                top of the roster like any teammate, and you go to it — it isn't
                 a panel that follows you around. Drafts it proposes still land
                 here as ghosts, which is the part that mattered. */}
             <Show when={state.register === "overview"}>

@@ -1,10 +1,12 @@
-import { createMemo, createResource, For, Show } from "solid-js";
+import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import BookOpen from "lucide-solid/icons/book-open";
 import MessageCircle from "lucide-solid/icons/message-circle";
+import Plus from "lucide-solid/icons/plus";
 import Sparkles from "lucide-solid/icons/sparkles";
 import Wrench from "lucide-solid/icons/wrench";
 import X from "lucide-solid/icons/x";
 
+import { confirmDialog } from "~/components/confirm";
 import { defaultSkillsForRole } from "~/components/agent-capabilities";
 import { Avatar, avatarColor } from "~/components/avatar";
 import { Backdrop } from "~/components/backdrop";
@@ -71,13 +73,21 @@ export function AgentProfileAside(props: {
     state.projects.filter((p) => !p.allAgents && p.team.includes(agent().id)),
   );
 
-  // Every thread you've had with them. Keyed on the agent so switching DMs
-  // refetches rather than showing the last one's history. The org card never
-  // shows these, so it never pays for the fetch.
-  const [threads] = createResource(
-    () => (onOrg() ? null : agent().id),
-    (id) => api.listConversations(id).catch(() => null),
-  );
+  // Every thread you've had with them, read from the store rather than fetched
+  // here. This panel is now the switcher, so its list has to be the same list
+  // the rest of the app mutates — a private copy would go stale the moment you
+  // started or deleted a session from it.
+  const threads = createMemo(() => state.threads[agent().id] ?? []);
+  const currentThread = () => state.conversationOf[agent().id];
+
+  /** Which thread's title is being edited, if any. */
+  const [renaming, setRenaming] = createSignal<string | null>(null);
+  const commitRename = (id: string, value: string) => {
+    setRenaming(null);
+    const title = value.trim();
+    const was = threads().find((c) => c.id === id)?.title?.trim() ?? "";
+    if (title && title !== was) void actions.renameConversation(id, title);
+  };
 
   // The at-a-glance numbers the org card leads with. Skills fall back to the
   // role defaults exactly as the Capabilities tab does, so the two never
@@ -257,46 +267,114 @@ export function AgentProfileAside(props: {
               have, and the one an org actually needs. Chat card only: beside
               the org chart the Chat button IS the doorway, and listing threads
               would just duplicate the register behind it. */}
+          {/* The one and only conversation switcher.
+              The header used to carry a second one — an icon button opening a
+              menu of the same threads listed right here — so the same list
+              existed twice, three inches apart. This one does the work: the +
+              starts a session, a row switches to it, and each row can be
+              deleted where you are already looking at it. */}
           <Show when={!onOrg()}>
-          <Section label="Conversations">
+          <section class="flex flex-col gap-1.5">
+            <div class="flex items-center gap-1.5">
+              <h3 class="text-[10.5px] font-bold uppercase tracking-[0.04em] text-[var(--muted)]">
+                Conversations
+              </h3>
+              <span class="text-[10.5px] text-[var(--faint)]">{threads().length}</span>
+              <button
+                type="button"
+                aria-label="New conversation"
+                title="New conversation"
+                onClick={() => void actions.newConversation(agent().id)}
+                class="ml-auto grid size-5 place-items-center rounded-[var(--r2)] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+              >
+                <Plus size={13} stroke-width={2.4} />
+              </button>
+            </div>
+
             <Show
-              when={threads()?.length}
-              fallback={
-                <p class="text-[11.5px] text-[var(--faint)]">
-                  {threads.loading ? "Loading…" : "No threads yet."}
-                </p>
-              }
+              when={threads().length}
+              fallback={<p class="text-[11.5px] text-[var(--faint)]">No threads yet.</p>}
             >
               <div class="flex flex-col gap-px">
-                <For each={threads()!.slice(0, 8)}>
+                <For each={threads()}>
                   {(c) => (
-                    <button
-                      type="button"
-                      onClick={() => actions.openChat(agent().id)}
-                      class="group/thread flex flex-col rounded-[var(--r2)] px-2 py-1.5 text-left transition-colors hover:bg-[var(--element-hover)]"
+                    <div
+                      class="group/thread flex items-center gap-1 rounded-[var(--r2)] pr-1 transition-colors hover:bg-[var(--element-hover)]"
+                      classList={{ "bg-[var(--element)]": c.id === currentThread() }}
                     >
-                      <span class="flex items-center gap-1.5">
-                        <span class="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--text-2)] transition-colors group-hover/thread:text-[var(--text)]">
-                          {c.title?.trim() || "Untitled thread"}
-                        </span>
-                        <Show when={c.unread_count > 0}>
-                          <span class="grid h-4 min-w-4 flex-none place-items-center rounded-[var(--pill)] bg-[var(--red)] px-1.5 text-[10.5px] font-bold text-white">
-                            {c.unread_count > 99 ? "99+" : c.unread_count}
-                          </span>
-                        </Show>
-                      </span>
-                      <Show when={c.last_message?.trim() || c.last_message_at}>
-                        <span class="mt-0.5 truncate text-[11px] leading-4 text-[var(--faint)]">
-                          {c.last_message_at ? shortDate(c.last_message_at) : ""}
-                          {c.last_message?.trim() ? ` · ${previewText(c.last_message)}` : ""}
-                        </span>
+                      <Show
+                        when={renaming() === c.id}
+                        fallback={
+                          <button
+                            type="button"
+                            onClick={() => void actions.openConversation(agent().id, c.id)}
+                            // Double-click renames in place. The header menu was
+                            // the only way to name a thread, so removing it took
+                            // renaming with it — and a name the app derived for
+                            // you still has to be one you can overrule.
+                            onDblClick={() => setRenaming(c.id)}
+                            class="flex min-w-0 flex-1 flex-col px-2 py-1.5 text-left"
+                          >
+                            <span class="flex items-center gap-1.5">
+                              <span class="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--text-2)] transition-colors group-hover/thread:text-[var(--text)]">
+                                {c.title?.trim() || "Untitled thread"}
+                              </span>
+                              <Show when={c.unread_count > 0}>
+                                <span class="grid h-4 min-w-4 flex-none place-items-center rounded-[var(--pill)] bg-[var(--red)] px-1.5 text-[10.5px] font-bold text-white">
+                                  {c.unread_count > 99 ? "99+" : c.unread_count}
+                                </span>
+                              </Show>
+                            </span>
+                            <Show when={c.last_message?.trim() || c.last_message_at}>
+                              <span class="mt-0.5 truncate text-[11px] leading-4 text-[var(--faint)]">
+                                {c.last_message_at ? shortDate(c.last_message_at) : ""}
+                                {c.last_message?.trim()
+                                  ? ` · ${previewText(c.last_message)}`
+                                  : ""}
+                              </span>
+                            </Show>
+                          </button>
+                        }
+                      >
+                        {/* The input replaces the row's button rather than
+                            sitting inside it: an input nested in a button is
+                            invalid, and browsers hand the press to the button. */}
+                        <input
+                          value={c.title ?? ""}
+                          placeholder="Thread name"
+                          autofocus
+                          onBlur={(e) => commitRename(c.id, e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename(c.id, e.currentTarget.value);
+                            if (e.key === "Escape") setRenaming(null);
+                          }}
+                          class="mx-2 my-1.5 min-w-0 flex-1 rounded-[3px] border border-[var(--accent)] bg-[var(--bg)] px-1 py-0.5 text-[12.5px] font-medium text-[var(--text)] outline-none"
+                        />
                       </Show>
-                    </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${c.title?.trim() || "this conversation"}`}
+                        title="Delete conversation"
+                        onClick={async () => {
+                          const ok = await confirmDialog({
+                            title: "Delete this conversation?",
+                            message:
+                              "Every message in it goes for good. The agent itself stays.",
+                            confirmLabel: "Delete",
+                            danger: true,
+                          });
+                          if (ok) await actions.deleteConversation(c.id);
+                        }}
+                        class="grid size-6 shrink-0 place-items-center rounded-[var(--r2)] text-[var(--muted)] opacity-0 transition-all hover:bg-[var(--bg)] hover:text-v2-state-fg-danger group-hover/thread:opacity-100 focus:opacity-100"
+                      >
+                        <X size={12} stroke-width={2.2} />
+                      </button>
+                    </div>
                   )}
                 </For>
               </div>
             </Show>
-          </Section>
+          </section>
           </Show>
         </div>
       </div>

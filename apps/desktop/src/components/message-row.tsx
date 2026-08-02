@@ -38,6 +38,12 @@ export function MessageRow(props: {
   actionable?: boolean;
   /** Agent is mid-turn: a live dot on the portrait. */
   working?: boolean;
+  /** Selection mode is on: the row becomes a checkbox, not a message. */
+  selecting?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (additive: boolean) => void;
+  /** Rail action that turns selection mode on with this row already picked. */
+  onStartSelect?: () => void;
 }) {
   const m = () => props.message;
   const isUser = () => m().sender_type === "user";
@@ -69,9 +75,41 @@ export function MessageRow(props: {
       // min-w-0 matters: without it the row sizes to its widest child's
       // min-content (a long code block, an unbroken URL) and drags a horizontal
       // scrollbar onto the whole timeline.
-      class="group/message relative z-10 mx-1 flex min-w-0 gap-2.5 rounded-[var(--r4)] px-2 py-1 transition-colors hover:bg-[var(--row-hover)] focus-within:bg-[var(--row-hover)]"
+      class="group/message relative z-10 mx-1 flex min-w-0 gap-2.5 rounded-[var(--r4)] px-2 py-1 transition-colors"
+      classList={{
+        "hover:bg-[var(--row-hover)] focus-within:bg-[var(--row-hover)]": !props.selecting,
+        "cursor-pointer": !!props.selecting,
+        // Selected rows carry the accent at a wash — enough to scan a selection
+        // down a long thread, not enough to fight the words inside it.
+        "bg-[color-mix(in_srgb,var(--accent)_11%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]":
+          !!props.selecting && !!props.selected,
+        "hover:bg-[var(--row-hover)]": !!props.selecting && !props.selected,
+      }}
+      // Selection is the whole row's job while it's on: a checkbox you have to
+      // hit precisely turns "clear these twelve" into twelve careful clicks.
+      // Shift extends from the last pick, as every list does.
+      onClick={(e) => props.selecting && props.onToggleSelect?.(e.shiftKey)}
+      aria-selected={props.selecting ? !!props.selected : undefined}
       data-testid="message-row"
     >
+      <Show when={props.selecting}>
+        <div class="flex w-[18px] shrink-0 items-start justify-center pt-2.5">
+          <span
+            aria-hidden="true"
+            class="grid size-[16px] place-items-center rounded-[4px] border transition-colors"
+            classList={{
+              "border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]":
+                !!props.selected,
+              "border-[var(--line-strong)]": !props.selected,
+            }}
+          >
+            <Show when={props.selected}>
+              <Icon name="check-small" size="small" />
+            </Show>
+          </span>
+        </div>
+      </Show>
+
       {/* The gutter: portrait on the first of a run, hover-timestamp after. */}
       <Show
         when={props.first}
@@ -131,18 +169,28 @@ export function MessageRow(props: {
         />
       </div>
 
-      {/* The floating rail — Discord's hover affordance, over the row's corner. */}
-      <div class="absolute -top-3 right-3 z-20 flex items-center gap-0.5 rounded-[var(--pill)] border border-[var(--line)] bg-[var(--surface)] px-1 py-0.5 opacity-0 shadow-[var(--shadow-1)] transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-        <RailButton label="Reply" onClick={() => actions.setReplyTo(m())}>
-          <Icon name="arrow-undo-down" size="small" />
-        </RailButton>
-        <RailButton label={copied() ? "Copied" : "Copy"} onClick={() => void copy()}>
-          <Icon name={copied() ? "check-small" : "copy"} size="small" />
-        </RailButton>
-        <RailButton label="Delete" danger onClick={() => void remove()}>
-          <Icon name="trash" size="small" />
-        </RailButton>
-      </div>
+      {/* The floating rail — Discord's hover affordance, over the row's corner.
+          Gone while selecting: its buttons act on one message, and offering
+          them mid-selection just puts three small targets over a row whose
+          entire job is now to be clicked. */}
+      <Show when={!props.selecting}>
+        <div class="absolute -top-3 right-3 z-20 flex items-center gap-0.5 rounded-[var(--pill)] border border-[var(--line)] bg-[var(--surface)] px-1 py-0.5 opacity-0 shadow-[var(--shadow-1)] transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+          <RailButton label="Reply" onClick={() => actions.setReplyTo(m())}>
+            <Icon name="arrow-undo-down" size="small" />
+          </RailButton>
+          <RailButton label={copied() ? "Copied" : "Copy"} onClick={() => void copy()}>
+            <Icon name={copied() ? "check-small" : "copy"} size="small" />
+          </RailButton>
+          <Show when={props.onStartSelect}>
+            <RailButton label="Select" onClick={() => props.onStartSelect?.()}>
+              <Icon name="circle-check" size="small" />
+            </RailButton>
+          </Show>
+          <RailButton label="Delete" danger onClick={() => void remove()}>
+            <Icon name="trash" size="small" />
+          </RailButton>
+        </div>
+      </Show>
     </div>
   );
 }
@@ -158,7 +206,13 @@ function RailButton(props: {
       type="button"
       aria-label={props.label}
       title={props.label}
-      onClick={props.onClick}
+      // The event must not reach the row. Select turns selection mode on, and
+      // the row's own handler — reading the signal that press just set — would
+      // catch the same bubbling click and immediately toggle the pick back off.
+      onClick={(e) => {
+        e.stopPropagation();
+        props.onClick();
+      }}
       class="grid size-6 place-items-center rounded-full transition-colors hover:bg-[var(--element-hover)]"
       classList={{
         "text-[var(--muted)] hover:text-[var(--text)]": !props.danger,
