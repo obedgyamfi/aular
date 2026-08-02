@@ -21,7 +21,7 @@ import {
   settings,
   settingsActions,
 } from "~/lib/settings";
-import { actions, state, type SettingsSection } from "~/lib/store";
+import { actions, harnessCapable, state, type SettingsSection } from "~/lib/store";
 import { accent, colorScheme, setAccent, setColorScheme, type ColorScheme } from "~/theme/theme";
 
 /**
@@ -78,11 +78,23 @@ export function SettingsPanel(props: { onClose: () => void }) {
   const [section, setSection] = createSignal<SectionId>(state.settingsSection);
   const [query, setQuery] = createSignal("");
 
+  /**
+   * The sections this build can actually serve.
+   *
+   * Memory is the agent runtime's own graph, read live — on a runtime that keeps
+   * none there is nothing behind the link, so the link goes rather than opening
+   * an empty panel and implying the agents have forgotten everything.
+   */
+  const available = () =>
+    NAV.filter((r) => ("header" in r ? true : r.id !== "memory" || harnessCapable("memory")));
+
   /** Filtering hides links, never headers with nothing under them. */
   const rows = () => {
     const q = query().trim().toLowerCase();
-    if (!q) return NAV;
-    const kept = NAV.filter((r) => !("header" in r) && r.label.toLowerCase().includes(q));
+    if (!q) return available();
+    const kept = available().filter(
+      (r) => !("header" in r) && r.label.toLowerCase().includes(q),
+    );
     return kept.length ? kept : [];
   };
 
@@ -205,7 +217,18 @@ export function SettingsPanel(props: { onClose: () => void }) {
                   </Show>
                   <Show when={sec === "memory"}>
                     <SectionCard>
-                      <MemoryPanel />
+                      <Show
+                        when={harnessCapable("memory")}
+                        fallback={
+                          <p class="text-[13px] text-v2-text-text-muted">
+                            This install's agent runtime keeps no memory graph, so there is
+                            nothing to read here. What the organization knows lives in the
+                            knowledge bank instead.
+                          </p>
+                        }
+                      >
+                        <MemoryPanel />
+                      </Show>
                     </SectionCard>
                   </Show>
                   <Show when={sec === "about"}>

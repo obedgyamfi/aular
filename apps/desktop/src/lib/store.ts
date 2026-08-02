@@ -1425,6 +1425,23 @@ export const orgCapable = (cap: "tasks" | "briefs"): boolean => {
   return !caps || caps.includes(cap);
 };
 
+/**
+ * Whether the agent runtime behind this backend can do something.
+ *
+ * Hermes brings a cron daemon, a memory graph, a slash-command registry and its
+ * own model sign-in, and AULAR grew surfaces for all four. A harness reached over
+ * ACP — Claude Code, Codex, goose — brings none of them, so those surfaces have
+ * to be able to disappear rather than sit there failing. The backend reports what
+ * the runtime has as `harness:<cap>`; the same forgiving rule as orgCapable
+ * applies, because a backend that predates the field has everything.
+ */
+export const harnessCapable = (
+  cap: "cron" | "memory" | "slashCommands" | "modelAuth" | "usage" | "mcp" | "permissions",
+): boolean => {
+  const caps = state.health?.capabilities;
+  return !caps || caps.includes(`harness:${cap}`);
+};
+
 const taskTouchedAt = (t: Task) => t.state_updated_at ?? t.created_at;
 
 /** Tasks whose lifecycle is still running, newest activity first. */

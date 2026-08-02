@@ -3,7 +3,7 @@ import { Icon } from "@opencode-ai/ui/icon";
 
 import { api } from "~/lib/api";
 import { openExternal } from "~/lib/external";
-import { actions, state } from "~/lib/store";
+import { actions, harnessCapable, state } from "~/lib/store";
 
 /**
  * Connect a model — the way Hermes' own CLI does it: pick who you sign in
@@ -109,7 +109,13 @@ export function ModelSettings() {
         )}
       </Show>
 
-      {/* The sign-in path, first — it's what most people have. */}
+      {/* The sign-in path, first — it's what most people have.
+
+          Offered only where the agent runtime owns model credentials. This is
+          Hermes' own device-code flow, driven through its CLI; a harness reached
+          over ACP arrives already signed in to whatever it uses, and offering to
+          sign it in again would be offering a button that cannot work. */}
+      <Show when={harnessCapable("modelAuth")}>
       <button
         type="button"
         onClick={() => setChoice(choice() === "codex" ? null : "codex")}
@@ -138,6 +144,7 @@ export function ModelSettings() {
 
       <Show when={choice() === "codex"}>
         <CodexConnect />
+      </Show>
       </Show>
 
       <button

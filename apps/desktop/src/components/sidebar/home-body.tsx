@@ -1,9 +1,11 @@
+import { Show } from "solid-js";
 import BookOpen from "lucide-solid/icons/book-open";
 import CalendarDays from "lucide-solid/icons/calendar-days";
 import Network from "lucide-solid/icons/network";
 import SquareKanban from "lucide-solid/icons/square-kanban";
 
 import { AgentsSection, ChannelSection, NavRow } from "~/components/sidebar/parts";
+import { harnessCapable } from "~/lib/store";
 import type { Agent } from "~/lib/types";
 
 /**
@@ -40,12 +42,17 @@ export function HomeBody(props: {
         {/* Routines belong to agents, and most agents are on no project — so
             without an org-wide cut here, everything they run on their own would
             have no route at all. The project's Schedules row is the same panel
-            filtered to that team. */}
-        <NavRow
-          register="calendar"
-          label="Schedules"
-          icon={<CalendarDays size={16} stroke-width={1.9} />}
-        />
+            filtered to that team.
+
+            Gone entirely when the agent runtime has no scheduler: a route to a
+            panel that can only ever be empty is worse than no route. */}
+        <Show when={harnessCapable("cron")}>
+          <NavRow
+            register="calendar"
+            label="Schedules"
+            icon={<CalendarDays size={16} stroke-width={1.9} />}
+          />
+        </Show>
       </nav>
       <div class="mx-1 my-0.5 h-px bg-[var(--line)]" />
 
