@@ -42,6 +42,8 @@ type Kind = "agent" | "org" | "own";
 export function KnowledgeGraph(props: {
   agents: Agent[];
   documents: OrgDocument[];
+  /** document id → agents it is shared with, beyond whoever it was written for. */
+  links?: Record<string, string[]>;
   onOpenDoc: (doc: OrgDocument) => void;
   onOpenAgent: (agent: Agent) => void;
   selectedId?: string | null;
@@ -91,7 +93,28 @@ export function KnowledgeGraph(props: {
     if (org.length > 2) {
       edges.push({ from: org[org.length - 1]!.id, to: org[0]!.id, rest: 64, strength: 0.07 });
     }
-    return { items, edges };
+
+    /**
+     * Shared readers — the tier the graph exists to show.
+     *
+     * A specialization document reaches only whoever it was written for; these
+     * are the agents given it as well. Weak and long springs on purpose: they
+     * should pull a shared document toward the people who use it without
+     * overpowering the author's own hold on it, which is the stronger claim.
+     * Org-wide documents are skipped — everyone reads those already, and
+     * drawing it would be the starburst we removed.
+     */
+    const shared: ForceEdge[] = [];
+    const byId = new Set(props.agents.map((a) => a.id));
+    for (const [docId, readers] of Object.entries(props.links ?? {})) {
+      const doc = props.documents.find((d) => d.id === docId);
+      if (!doc || !doc.agent_profile_id) continue;
+      for (const agentId of readers) {
+        if (!byId.has(agentId) || agentId === doc.agent_profile_id) continue;
+        shared.push({ from: agentId, to: docId, rest: 130, strength: 0.02 });
+      }
+    }
+    return { items, edges: [...edges, ...shared], shared };
   });
 
   // ── the simulation ────────────────────────────────────────────────────────
@@ -410,28 +433,31 @@ export function KnowledgeGraph(props: {
             )}
           </Show>
 
-          {/* Every edge here is ownership — an agent and something only they
-              read. Org-wide documents have none: they belong to everyone, and
-              sixteen spokes into a point said that worse than size and colour
-              do. */}
+          {/* Two relationships, drawn differently. A solid line is authorship —
+              this document was written for this agent. A dashed one is a share:
+              somebody else also reads it. Org-wide documents have neither, since
+              sixteen spokes into a point said "everyone" worse than size and
+              colour do. */}
           <For each={graph().edges}>
             {(e) => {
               const a = () => at(e.from);
               const b = () => at(e.to);
               const owner = () => props.agents.find((x) => x.id === e.from);
+              const isShare = () => graph().shared.includes(e);
               const lit = () => {
                 const m = matches();
                 return !m || m.has(e.from) || m.has(e.to);
               };
               return (
                 <line
+                  stroke-dasharray={isShare() ? "5 4" : undefined}
                   x1={a().x}
                   y1={a().y}
                   x2={b().x}
                   y2={b().y}
                   stroke={owner() ? avatarColor(owner()!.name) : "var(--line)"}
-                  stroke-width={1.4}
-                  opacity={lit() ? 0.5 : 0.06}
+                  stroke-width={isShare() ? 1.1 : 1.4}
+                  opacity={lit() ? (isShare() ? 0.4 : 0.5) : 0.06}
                 />
               );
             }}

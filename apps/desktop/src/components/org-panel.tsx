@@ -3,6 +3,7 @@ import { createEffect, createMemo, createResource, createSignal, Show } from "so
 import { AgentProfileAside } from "~/components/agent-profile-aside";
 import { Avatar } from "~/components/avatar";
 import { DocEditor, DocView } from "~/components/doc-editor";
+import { DocReaders } from "~/components/doc-readers";
 import { KnowledgeAside } from "~/components/knowledge-aside";
 import { KnowledgeGraph } from "~/components/knowledge-graph";
 import { Modal } from "~/components/modal";
@@ -109,6 +110,25 @@ export function OrgPanel() {
    * the agent's shelf.
    */
   const curated = createMemo(() => (documents() ?? []).filter((d) => d.kind !== "report"));
+  /**
+   * Who reads what beyond its author — document id → agent ids.
+   *
+   * Kept beside the documents rather than folded into them: the edges change
+   * far more often than the prose does, and a share should not have to refetch
+   * every document's content to show up.
+   */
+  const [links, { refetch: refetchLinks }] = createResource(() =>
+    api.listDocumentLinks().then((l) => l ?? {}).catch(() => ({})),
+  );
+  const share = async (docId: string, agentId: string, on: boolean) => {
+    try {
+      await (on ? api.linkDocument(docId, agentId) : api.unlinkDocument(docId, agentId));
+    } catch {
+      /* the refetch below reveals whatever actually landed */
+    }
+    void refetchLinks();
+  };
+
   const [openDoc, setOpenDoc] = createSignal<OrgDocument | null>(null);
   const [newDocFor, setNewDocFor] = createSignal<string | null>(null);
   const [knowledgeAgent, setKnowledgeAgent] = createSignal<Agent | null>(null);
@@ -191,6 +211,7 @@ export function OrgPanel() {
               <KnowledgeGraph
                 agents={state.agents.filter((a) => a.role !== "system")}
                 documents={curated()}
+                links={links() ?? {}}
                 selectedId={openDoc()?.id ?? knowledgeAgent()?.id ?? null}
                 onOpenDoc={(d) => setOpenDoc(d)}
                 onOpenAgent={(a) => setKnowledgeAgent(a)}
@@ -212,6 +233,7 @@ export function OrgPanel() {
             <KnowledgeAside
               agent={a()}
               documents={documents() ?? []}
+              links={links() ?? {}}
               onOpenDoc={(d) => setOpenDoc(d)}
               onNewDoc={(id) => setNewDocFor(id)}
               onClose={() => setKnowledgeAgent(null)}
@@ -280,6 +302,17 @@ export function OrgPanel() {
             }
           >
             {(d) => (
+              <>
+              {/* Who reads it, above the prose — a decision you make while
+                  looking at the thing you are deciding about. */}
+              <div class="mb-3 border-b border-[var(--line)] pb-3">
+                <DocReaders
+                  doc={d()}
+                  agents={state.agents.filter((a) => a.role !== "system")}
+                  links={links() ?? {}}
+                  onShare={share}
+                />
+              </div>
               <Show
                 when={editingDoc()}
                 fallback={
@@ -304,6 +337,7 @@ export function OrgPanel() {
                   onCancel={() => setEditingDoc(false)}
                 />
               </Show>
+              </>
             )}
           </Show>
         </Modal>

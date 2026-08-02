@@ -209,6 +209,24 @@ export const api = {
     v1<OrgDocument>("/documents/", { method: "POST", body: JSON.stringify(input) }),
   deleteDocument: (id: string) => v1<void>(`/documents/${id}`, { method: "DELETE" }),
 
+  /**
+   * Who else reads a document.
+   *
+   * `agent_profile_id` on the document says who it was WRITTEN for; these are
+   * the readers layered on top, so one policy can serve four agents without
+   * being copied per agent or forced org-wide. Fetched for the whole org in one
+   * call — the graph draws every edge at once, and per-document would be a
+   * request per node.
+   */
+  listDocumentLinks: () => v1<Record<string, string[]> | null>("/documents/links"),
+  linkDocument: (docId: string, agentId: string) =>
+    v1<void>(`/documents/${docId}/links`, {
+      method: "POST",
+      body: JSON.stringify({ agent_profile_id: agentId }),
+    }),
+  unlinkDocument: (docId: string, agentId: string) =>
+    v1<void>(`/documents/${docId}/links/${agentId}`, { method: "DELETE" }),
+
   listToolDefinitions: () => v1<ToolDefinition[]>("/tool-definitions"),
   listToolCalls: (conversationId: string, limit = 100) =>
     v1<ToolCall[] | null>(`/conversations/${conversationId}/tool-calls?limit=${limit}`),

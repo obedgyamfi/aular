@@ -24,6 +24,8 @@ import type { Agent, OrgDocument } from "~/lib/types";
 export function KnowledgeAside(props: {
   agent: Agent;
   documents: OrgDocument[];
+  /** document id → agents it is shared with. */
+  links?: Record<string, string[]>;
   onOpenDoc: (doc: OrgDocument) => void;
   onNewDoc: (agentId: string) => void;
   onClose: () => void;
@@ -49,6 +51,23 @@ export function KnowledgeAside(props: {
    */
   const reports = createMemo(() =>
     props.documents.filter((d) => isReport(d) && d.updated_by === agent().name),
+  );
+  /**
+   * Given to them, rather than written for them.
+   *
+   * Its own shelf because the distinction is the point: their specialization is
+   * theirs, while a shared document belongs to another agent's remit and they
+   * have been let in on it. Reading one tells you the org has a dependency
+   * worth knowing about.
+   */
+  const shared = createMemo(() =>
+    props.documents.filter(
+      (d) =>
+        !isReport(d) &&
+        d.agent_profile_id &&
+        d.agent_profile_id !== agent().id &&
+        (props.links?.[d.id] ?? []).includes(agent().id),
+    ),
   );
 
   return (
@@ -88,6 +107,16 @@ export function KnowledgeAside(props: {
             onOpenDoc={props.onOpenDoc}
             empty="No documents of their own yet."
           />
+          <Show when={shared().length}>
+            <Shelf
+              label="Shared with them"
+              hint="another agent's, read by this one"
+              docs={shared()}
+              open
+              onOpenDoc={props.onOpenDoc}
+              empty="Nothing shared yet."
+            />
+          </Show>
           <Shelf
             label="Org-wide"
             hint="every agent reads these"
