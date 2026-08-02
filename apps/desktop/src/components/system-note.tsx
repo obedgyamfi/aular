@@ -7,6 +7,7 @@ import PauseCircle from "lucide-solid/icons/pause-circle";
 
 import { Avatar } from "~/components/avatar";
 import { Markdown } from "~/components/markdown";
+import { previewText } from "~/lib/store";
 import type { Message } from "~/lib/types";
 
 /**
@@ -124,7 +125,7 @@ function ActorNote(props: { note: Extract<Note, { who: string }> }) {
             class="min-w-0 flex-1 break-words text-[12.5px] leading-[18px] text-[var(--text-2)]"
             classList={{ truncate: !open() }}
           >
-            <Show when={open()} fallback={n().body.replace(/\s+/g, " ")}>
+            <Show when={open()} fallback={previewText(n().body)}>
               <Markdown content={n().body} sans />
             </Show>
           </span>

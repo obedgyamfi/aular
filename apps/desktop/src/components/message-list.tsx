@@ -3,6 +3,7 @@ import ArrowDown from "lucide-solid/icons/arrow-down";
 
 import { Avatar } from "~/components/avatar";
 import { BriefCard } from "~/components/brief-card";
+import { CommandCard, isSlashCommand } from "~/components/command-card";
 import { DelegationGroup } from "~/components/delegation-group";
 import { SystemNote } from "~/components/system-note";
 import { MessageRow } from "~/components/message-row";
@@ -37,7 +38,8 @@ const GUTTER = "w-10 shrink-0";
 type Item =
   | { kind: "message"; at: number; message: Message }
   | { kind: "tool"; at: number; tools: ToolCall[] }
-  | { kind: "delegation"; at: number; tasks: Task[] };
+  | { kind: "delegation"; at: number; tasks: Task[] }
+  | { kind: "command"; at: number; ask: Message; reply?: Message };
 
 export function MessageList() {
   const agent = () => activeAgent();
@@ -81,6 +83,19 @@ export function MessageList() {
       if (it.kind === "delegation" && prev?.kind === "delegation") {
         prev.tasks.push(...it.tasks);
         continue;
+      }
+      // A slash command and the gateway's answer are one exchange, not two
+      // turns. Left as messages they drew a portrait and an author line for
+      // asking the runtime its own token count.
+      if (it.kind === "message" && isSlashCommand(it.message)) {
+        folded.push({ kind: "command", at: it.at, ask: it.message });
+        continue;
+      }
+      if (it.kind === "message" && prev?.kind === "command" && !prev.reply) {
+        if (it.message.sender_type === "agent") {
+          prev.reply = it.message;
+          continue;
+        }
       }
       folded.push(it);
     }
@@ -190,6 +205,19 @@ export function MessageList() {
                         <div class={GUTTER} />
                         <div class="min-w-0 flex-1">
                           <ToolGroup tools={(it as Extract<Item, { kind: "tool" }>).tools} />
+                        </div>
+                      </div>
+                    </Show>
+
+                    <Show when={it.kind === "command"}>
+                      {/* A gateway exchange, in the prose column. */}
+                      <div class="mx-1 flex gap-2.5 px-2 py-1">
+                        <div class={GUTTER} />
+                        <div class="min-w-0 flex-1">
+                          {(() => {
+                            const c = it as Extract<Item, { kind: "command" }>;
+                            return <CommandCard ask={c.ask} reply={c.reply} />;
+                          })()}
                         </div>
                       </div>
                     </Show>
@@ -417,7 +445,7 @@ export function isEmptyExhaust(m: Message, streaming: boolean): boolean {
  * or a "dispatch landed" note starts a fresh run with its portrait back.
  */
 const sideOf = (it: Item): "user" | "agent" | "system" | "tool" => {
-  if (it.kind === "tool" || it.kind === "delegation") return "tool";
+  if (it.kind === "tool" || it.kind === "delegation" || it.kind === "command") return "tool";
   if (it.message.sender_type === "user") return "user";
   if (it.message.sender_type === "system") return "system";
   return "agent";
