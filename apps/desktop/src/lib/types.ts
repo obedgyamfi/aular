@@ -54,8 +54,14 @@ export interface OrgDocument {
   id: string;
   agent_profile_id?: string | null;
   title: string;
+  /** doc | spec | process | roadmap | report. A `report` is an archived
+   *  dispatch outcome: kept so nothing is lost to truncation, but never
+   *  injected into a prompt and never drawn on the knowledge graph. */
   kind: string;
   content: string;
+  /** Who last wrote it — "user", or the agent's name for anything an agent
+   *  filed. The only attribution a report carries. */
+  updated_by?: string;
   updated_at: string;
 }
 

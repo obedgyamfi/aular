@@ -32,10 +32,24 @@ export function KnowledgeAside(props: {
   const tint = () =>
     settings.dynamicAccent ? avatarColor(agent().name) : "var(--blurple)";
 
+  const isReport = (d: OrgDocument) => d.kind === "report";
   const own = createMemo(() =>
-    props.documents.filter((d) => d.agent_profile_id === agent().id),
+    props.documents.filter((d) => d.agent_profile_id === agent().id && !isReport(d)),
   );
-  const org = createMemo(() => props.documents.filter((d) => !d.agent_profile_id));
+  const org = createMemo(() =>
+    props.documents.filter((d) => !d.agent_profile_id && !isReport(d)),
+  );
+  /**
+   * What this agent has filed back.
+   *
+   * A long dispatch report is archived as a document so the relay can carry a
+   * digest and a pointer rather than truncating. Those are kept off the canvas
+   * — they are records, not knowledge — but the pointer has to lead somewhere,
+   * so they surface here, attributed by who wrote them.
+   */
+  const reports = createMemo(() =>
+    props.documents.filter((d) => isReport(d) && d.updated_by === agent().name),
+  );
 
   return (
     <aside class="flex w-[316px] shrink-0 flex-col p-2">
@@ -81,6 +95,15 @@ export function KnowledgeAside(props: {
             onOpenDoc={props.onOpenDoc}
             empty="The organization has no shared documents yet."
           />
+          <Show when={reports().length}>
+            <Shelf
+              label="Reports"
+              hint="filed, not injected"
+              docs={reports()}
+              onOpenDoc={props.onOpenDoc}
+              empty="Nothing filed yet."
+            />
+          </Show>
         </div>
 
         <div class="relative z-10 flex shrink-0 gap-1.5 p-3">

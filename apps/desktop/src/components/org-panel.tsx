@@ -99,6 +99,16 @@ export function OrgPanel() {
   const [documents, { refetch: refetchDocs }] = createResource(() =>
     api.listDocuments().then((d) => d ?? []).catch(() => []),
   );
+  /**
+   * What the graph draws: knowledge, not archives.
+   *
+   * A completed dispatch files its full report here so nothing is lost to
+   * truncation, which is worth keeping — but a report is a record of one task,
+   * not something the organization knows. Drawn on the canvas they were the
+   * majority of the nodes and none of the meaning. They stay reachable through
+   * the agent's shelf.
+   */
+  const curated = createMemo(() => (documents() ?? []).filter((d) => d.kind !== "report"));
   const [openDoc, setOpenDoc] = createSignal<OrgDocument | null>(null);
   const [newDocFor, setNewDocFor] = createSignal<string | null>(null);
   const [knowledgeAgent, setKnowledgeAgent] = createSignal<Agent | null>(null);
@@ -180,7 +190,7 @@ export function OrgPanel() {
             <div class="min-h-0 flex-1 p-3">
               <KnowledgeGraph
                 agents={state.agents.filter((a) => a.role !== "system")}
-                documents={documents() ?? []}
+                documents={curated()}
                 selectedId={openDoc()?.id ?? knowledgeAgent()?.id ?? null}
                 onOpenDoc={(d) => setOpenDoc(d)}
                 onOpenAgent={(a) => setKnowledgeAgent(a)}
