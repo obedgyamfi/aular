@@ -182,8 +182,8 @@
   /* Motion.
      opencode's Tailwind preset ships no keyframes at all — `animate-pulse`,
      `animate-bounce` and `animate-spin` resolve to `animation-name: none`. Every
-     moving thing in this app (the thinking indicator, the streaming caret, the
-     running-tool pulse) was therefore frozen. These are ours. */
+     moving thing in this app (the thinking indicator, the running-tool pulse,
+     the selection glow) was therefore frozen. These are ours. */
 
   /* The design's spinner (opencode's preset ships no keyframes, so
      animate-spin resolves to nothing — this is ours). */
@@ -248,16 +248,6 @@
   }
 
   /* The caret at the end of a streaming reply. */
-  @keyframes aular-caret {
-    0%,
-    45% {
-      opacity: 1;
-    }
-    55%,
-    100% {
-      opacity: 0.15;
-    }
-  }
 
   /* A tool that is still running. */
   @keyframes aular-breathe {
@@ -421,9 +411,6 @@
 
   .aular-think {
     animation: aular-think 1.25s ease-in-out infinite;
-  }
-  .aular-caret {
-    animation: aular-caret 1s steps(1, end) infinite;
   }
   .aular-breathe {
     animation: aular-breathe 1.4s ease-in-out infinite;

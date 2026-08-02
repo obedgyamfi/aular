@@ -87,9 +87,10 @@ export function MessageBody(props: {
                 <WorkflowPreview workflow={w()} onOpen={(wf) => actions.openWorkflow(wf)} />
               )}
             </Show>
-            <Show when={props.streaming}>
-              <span class="aular-caret ml-0.5 inline-block h-3.5 w-[2px] bg-[var(--accent)] align-middle" />
-            </Show>
+            {/* No caret. A blinking bar chased the text down the message and
+                was the only thing moving once a reply paused between tokens —
+                text arriving IS the indicator that text is arriving, and the
+                composer already shows the turn is live. */}
           </div>
         </Show>
       </div>
