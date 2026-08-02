@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import Download from "lucide-solid/icons/download";
 import ExternalLink from "lucide-solid/icons/external-link";
 
+import { apiBase } from "~/lib/api";
 import { downloadFile, openExternal } from "~/lib/external";
 import type { MediaDescriptor, Message } from "~/lib/types";
 
@@ -274,11 +275,16 @@ function DocumentCard(props: { media: MediaDescriptor; label: string }) {
   );
 }
 
-/** The backend serves media from its own origin, not the app's. */
+/**
+ * The backend serves media from its own origin, not the app's.
+ *
+ * Resolved through apiBase() rather than reading the build-time env a second
+ * time — a duplicate default would keep pointing at localhost after the user
+ * moved their account to another server, and only images would break.
+ */
 function absolute(url: string): string {
   if (/^https?:|^data:|^blob:/.test(url)) return url;
-  const base = import.meta.env.VITE_AULAR_API ?? "http://127.0.0.1:8080";
-  return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
+  return `${apiBase()}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
 function mediaOf(message: Message): MediaDescriptor[] {

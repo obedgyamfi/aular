@@ -19,7 +19,9 @@ import type { AuthUser } from "~/lib/types";
  * offering one at all.
  */
 export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
-  const [health] = createResource(() => api.health().catch(() => null));
+  const [health, { refetch: recheckServer }] = createResource(() =>
+    api.health().catch(() => null),
+  );
 
   const [mode, setMode] = createSignal<"signin" | "signup">("signin");
   // A fresh install has nobody to sign in — open on "create account".
@@ -36,6 +38,22 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
   const [invite, setInvite] = createSignal("");
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
+
+  // Which server holds the account. Offered here rather than in settings
+  // because the session token is issued by whichever server signs you in — by
+  // the time you could reach settings, the choice has already been made.
+  const [server, setServer] = createSignal(api.apiBase());
+  const [editingServer, setEditingServer] = createSignal(false);
+  const [serverDraft, setServerDraft] = createSignal(api.apiBase());
+
+  const applyServer = () => {
+    api.setApiBase(serverDraft());
+    setServer(api.apiBase());
+    setServerDraft(api.apiBase());
+    setEditingServer(false);
+    setError("");
+    void recheckServer();
+  };
 
   const signupMode = () => health()?.signup ?? "closed";
   const canSignUp = () => signupMode() !== "closed";
@@ -171,6 +189,73 @@ export function AuthScreen(props: { onAuthed: (user: AuthUser) => void }) {
                 : "New here? Create an account"}
           </button>
         </Show>
+
+        {/* Kept quiet: almost nobody changes this, but when the server is wrong
+            nothing else on this screen can work, so it has to be reachable. */}
+        <div class="flex flex-col gap-2 border-t border-[var(--line)] pt-4">
+          <Show
+            when={editingServer()}
+            fallback={
+              <button
+                type="button"
+                onClick={() => {
+                  setServerDraft(server());
+                  setEditingServer(true);
+                }}
+                class="flex items-center justify-center gap-1.5 text-[12px] text-[var(--faint)] transition-colors hover:text-[var(--muted)]"
+              >
+                <span
+                  class="size-1.5 rounded-full"
+                  style={{
+                    background: health() ? "var(--green, #3ba55d)" : "var(--red)",
+                  }}
+                />
+                <span class="max-w-[240px] truncate font-mono">{server()}</span>
+              </button>
+            }
+          >
+            <input
+              type="url"
+              autofocus
+              spellcheck={false}
+              placeholder="https://api.aular.app"
+              value={serverDraft()}
+              onInput={(e) => setServerDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyServer();
+                if (e.key === "Escape") setEditingServer(false);
+              }}
+              class={`${field} font-mono text-[12.5px]`}
+            />
+            <div class="flex gap-2">
+              <button
+                type="button"
+                onClick={applyServer}
+                class="h-8 flex-1 rounded-[var(--r2)] bg-[var(--element)] text-[12.5px] text-[var(--text)] transition-colors hover:brightness-110"
+              >
+                Use this server
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  api.setApiBase(null);
+                  setServer(api.apiBase());
+                  setServerDraft(api.apiBase());
+                  setEditingServer(false);
+                  void recheckServer();
+                }}
+                class="h-8 rounded-[var(--r2)] px-3 text-[12.5px] text-[var(--faint)] transition-colors hover:text-[var(--text)]"
+              >
+                Reset
+              </button>
+            </div>
+          </Show>
+          <Show when={!health() && !editingServer()}>
+            <p class="text-center text-[11.5px] text-[var(--faint)]">
+              Can&apos;t reach this server.
+            </p>
+          </Show>
+        </div>
       </div>
     </div>
   );
