@@ -111,7 +111,55 @@ type AgentLite struct {
 // while streaming it arrives partially, so we still hide everything from the
 // marker onward but report it incomplete (nothing is acted on until it closes).
 func extractBetween(content, start, end string) (blockJSON, cleaned string, complete bool) {
-	i := strings.Index(content, start)
+	return extractAt(content, blockStart(content, start, end), start, end)
+}
+
+// atLineStart reports whether index i begins its line (leading indentation is
+// allowed). A block marker is written on its own line; one sitting mid-sentence
+// is prose talking ABOUT the protocol.
+func atLineStart(s string, i int) bool {
+	for k := i - 1; k >= 0; k-- {
+		switch s[k] {
+		case ' ', '\t', '\r':
+			continue
+		case '\n':
+			return true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// blockStart finds the marker that actually OPENS a block, or -1.
+//
+// An agent that explains itself — "dispatch only happens through a valid
+// `<<<AULAR_DISPATCH>>>` block" — is not opening a block, and treating it as one
+// truncated the reply at that word: everything from the marker onward is hidden,
+// and with no closing marker to end the hiding, the rest of the answer was lost
+// for good. So an inline marker only counts when its end marker is actually
+// there; a marker on its own line counts either way, because that is a block
+// mid-stream and hiding it is what keeps half-written JSON off the screen.
+func blockStart(content, start, end string) int {
+	for from := 0; from < len(content); {
+		j := strings.Index(content[from:], start)
+		if j < 0 {
+			return -1
+		}
+		at := from + j
+		if atLineStart(content, at) {
+			return at
+		}
+		if strings.Contains(content[at+len(start):], end) {
+			return at
+		}
+		from = at + len(start)
+	}
+	return -1
+}
+
+// extractAt is extractBetween with the opening marker already located.
+func extractAt(content string, i int, start, end string) (blockJSON, cleaned string, complete bool) {
 	if i < 0 {
 		return "", content, false
 	}
@@ -163,14 +211,14 @@ func ExtractSpec(content string) (kind BlockKind, blockJSON, cleaned string, com
 		{BlockDispatch, DispatchStart, DispatchEnd},
 		{BlockDoc, DocStart, DocEnd},
 	} {
-		if i := strings.Index(content, cand.start); i >= 0 && (first < 0 || i < first) {
+		if i := blockStart(content, cand.start, cand.end); i >= 0 && (first < 0 || i < first) {
 			first, kind, start, end = i, cand.kind, cand.start, cand.end
 		}
 	}
 	if first < 0 {
 		return BlockNone, "", stripPartialMarker(content), false
 	}
-	j, c, ok := extractBetween(content, start, end)
+	j, c, ok := extractAt(content, first, start, end)
 	return kind, j, c, ok
 }
 
