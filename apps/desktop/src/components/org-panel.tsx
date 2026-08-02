@@ -212,6 +212,7 @@ export function OrgPanel() {
                 agents={state.agents.filter((a) => a.role !== "system")}
                 documents={curated()}
                 links={links() ?? {}}
+                onShare={share}
                 selectedId={openDoc()?.id ?? knowledgeAgent()?.id ?? null}
                 onOpenDoc={(d) => setOpenDoc(d)}
                 onOpenAgent={(a) => setKnowledgeAgent(a)}

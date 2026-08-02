@@ -38,6 +38,8 @@ const ZONE_CLEARANCE = 78;
 const SEED_OUTSIDE = 90 + ZONE_PAD + ZONE_CLEARANCE;
 
 type Kind = "agent" | "org" | "own";
+/** One thing on the canvas: an agent, or a document in one of its two scopes. */
+type GraphItem = { id: string; kind: Kind; agent?: Agent; doc?: OrgDocument };
 
 export function KnowledgeGraph(props: {
   agents: Agent[];
@@ -46,6 +48,8 @@ export function KnowledgeGraph(props: {
   links?: Record<string, string[]>;
   onOpenDoc: (doc: OrgDocument) => void;
   onOpenAgent: (agent: Agent) => void;
+  /** Drop a document on an agent to share it. Absent = the canvas is read-only. */
+  onShare?: (docId: string, agentId: string, on: boolean) => void;
   selectedId?: string | null;
 }) {
   const [zoom, setZoom] = createSignal(0.85);
@@ -66,7 +70,7 @@ export function KnowledgeGraph(props: {
 
   /** The graph's shape: what exists and what binds to what. */
   const graph = createMemo(() => {
-    const items: { id: string; kind: Kind; agent?: Agent; doc?: OrgDocument }[] = [];
+    const items: GraphItem[] = [];
     const edges: ForceEdge[] = [];
     for (const d of orgDocs()) items.push({ id: d.id, kind: "org", doc: d });
     for (const a of props.agents) {
@@ -242,7 +246,78 @@ export function KnowledgeGraph(props: {
    * an agent is decided here instead, on release, by whether the pointer
    * actually went anywhere.
    */
-  let nodeDrag: { id: string; x: number; y: number; moved: number; open: () => void } | null = null;
+  let nodeDrag: {
+    id: string;
+    x: number;
+    y: number;
+    moved: number;
+    open: () => void;
+    /** Restored on release — see startNodeDrag. */
+    charge: number;
+  } | null = null;
+
+  /**
+   * Drag a document onto an agent to share it — the graph's one editing gesture.
+   *
+   * Held here rather than derived, because the drop has to be decided from where
+   * the pointer is, not from where the simulation has meanwhile pushed the node.
+   */
+  const [dropTarget, setDropTarget] = createSignal<string | null>(null);
+
+  /** Screen coordinates back into the world the nodes live in. */
+  const toWorld = (clientX: number, clientY: number) => {
+    const r = surface!.getBoundingClientRect();
+    return {
+      x: (clientX - (r.left + r.width / 2) - pan().x) / zoom(),
+      y: (clientY - (r.top + r.height / 2) - pan().y) / zoom(),
+    };
+  };
+
+  /**
+   * The share this drag would make, if released now.
+   *
+   * Works in either direction — a document dropped on an agent or an agent
+   * dropped on a document — because a person reaching for one will try the
+   * other. Refuses the pairs that mean nothing: an org-wide document is already
+   * read by everyone, an author already has their own document, and a reader
+   * who already has it would be a second identical link.
+   */
+  const pendingShare = (clientX: number, clientY: number) => {
+    if (!nodeDrag || !surface) return null;
+    const held = graph().items.find((i) => i.id === nodeDrag!.id);
+    if (!held) return null;
+    const w = toWorld(clientX, clientY);
+
+    /*
+     * Nearest within a generous reach, not whatever the pointer is strictly
+     * inside. Two reasons the strict test failed: the simulation keeps running
+     * while you drag, so a target drifts out from under you even now that a
+     * held node has no charge — measured 57px of drift against a 40px radius —
+     * and asking someone to land a small circle on a moving one is a game, not
+     * an interface.
+     */
+    let over: GraphItem | null = null;
+    let best = Infinity;
+    for (const i of graph().items) {
+      if (i.id === nodeDrag.id) continue;
+      const p = places().get(i.id);
+      if (!p) continue;
+      const d = Math.hypot(p.x - w.x, p.y - w.y);
+      const reach = (i.kind === "agent" ? AGENT_R : i.kind === "org" ? ORG_R : DOC_R) + 34;
+      if (d <= reach && d < best) {
+        best = d;
+        over = i;
+      }
+    }
+    if (!over) return null;
+
+    const doc = held.kind === "own" ? held : over.kind === "own" ? over : null;
+    const agent = held.kind === "agent" ? held : over.kind === "agent" ? over : null;
+    if (!doc || !agent) return null;
+    if (doc.doc!.agent_profile_id === agent.id) return null;
+    if ((props.links?.[doc.id] ?? []).includes(agent.id)) return null;
+    return { docId: doc.id, agentId: agent.id };
+  };
 
   const onDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
@@ -261,6 +336,10 @@ export function KnowledgeGraph(props: {
         nodeDrag.moved += Math.abs(dx) + Math.abs(dy);
         nodeDrag.x = e.clientX;
         nodeDrag.y = e.clientY;
+        // Only light a target once this is unmistakably a drag, or a plain
+        // click would flash a highlight on its way to opening something.
+        const share = nodeDrag.moved > 6 ? pendingShare(e.clientX, e.clientY) : null;
+        setDropTarget(share ? (share.docId === nodeDrag.id ? share.agentId : share.docId) : null);
       }
       return;
     }
@@ -268,15 +347,27 @@ export function KnowledgeGraph(props: {
     if (!d) return;
     setPan({ x: d.px + (e.clientX - d.x), y: d.py + (e.clientY - d.y) });
   };
-  const endDrag = () => {
+  const endDrag = (e?: PointerEvent) => {
     const held = nodeDrag;
     if (held) {
+      const share =
+        e && held.moved > 6 ? pendingShare(e.clientX, e.clientY) : null;
       const n = sim.find((s) => s.id === held.id);
-      if (n) n.pinned = false;
+      if (n) {
+        n.pinned = false;
+        n.charge = held.charge;
+      }
       nodeDrag = null;
-      // A press that never travelled was someone asking to open the thing.
-      if (held.moved < 4) held.open();
-      else reheat();
+      setDropTarget(null);
+      if (share) {
+        props.onShare?.(share.docId, share.agentId, true);
+        reheat();
+      } else if (held.moved < 4) {
+        // A press that never travelled was someone asking to open the thing.
+        held.open();
+      } else {
+        reheat();
+      }
     }
     setPanDrag(null);
   };
@@ -291,7 +382,12 @@ export function KnowledgeGraph(props: {
     const n = sim.find((s) => s.id === id);
     if (!n) return;
     n.pinned = true;
-    nodeDrag = { id, x: e.clientX, y: e.clientY, moved: 0, open };
+    // A held node stops pushing. While the simulation runs during a drag its
+    // repulsion shoved whatever you were aiming at out from under the pointer —
+    // you could not drop a document onto an agent because the agent fled. It is
+    // a cursor while held, not a body; the charge comes back on release.
+    nodeDrag = { id, x: e.clientX, y: e.clientY, moved: 0, open, charge: n.charge };
+    n.charge = 0;
     // Capture so the pointer keeps reporting to us once it leaves the node,
     // but never let it decide whether the drag happens: it throws for a
     // pointer the browser no longer considers active, and losing the loop
@@ -493,6 +589,7 @@ export function KnowledgeGraph(props: {
                   hit={!!matches()?.has(it.id)}
                   dim={dimmed(it.id)}
                   selected={props.selectedId === it.id}
+                  dropping={dropTarget() === it.id}
                   onDrag={(e) => startNodeDrag(e, it.id, () => props.onOpenDoc(it.doc!))}
                 />
               }
@@ -503,6 +600,7 @@ export function KnowledgeGraph(props: {
                 count={ownDocs().get(it.id)?.length ?? 0}
                 dim={dimmed(it.id)}
                 selected={props.selectedId === it.id}
+                dropping={dropTarget() === it.id}
                 onDrag={(e) => startNodeDrag(e, it.id, () => props.onOpenAgent(it.agent!))}
               />
             </Show>
@@ -513,6 +611,20 @@ export function KnowledgeGraph(props: {
       <Show when={!props.documents.length && !props.agents.length}>
         <div class="absolute inset-0 grid place-items-center text-[12.5px] text-[var(--muted)]">
           Nothing to map yet.
+        </div>
+      </Show>
+
+      {/* The gesture is invisible until you know it exists, so say it — but only
+          while a drop is actually possible, so it reads as confirmation of what
+          releasing will do rather than as permanent instructions. */}
+      <Show when={dropTarget()}>
+        <div class="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <span
+            class="rounded-[var(--pill)] border border-[var(--accent)] bg-[var(--surface)] px-3 py-1 text-[11.5px] font-semibold text-[var(--accent-text)]"
+            style={{ "box-shadow": "var(--shadow-1)" }}
+          >
+            Release to share
+          </span>
         </div>
       </Show>
     </div>
@@ -583,6 +695,8 @@ function AgentNode(props: {
   count: number;
   dim: boolean;
   selected: boolean;
+  /** A document is hovering over this agent, and releasing would share it. */
+  dropping?: boolean;
   onDrag: (e: PointerEvent) => void;
 }) {
   return (
@@ -599,7 +713,7 @@ function AgentNode(props: {
       }}
     >
       <span class="relative grid place-items-center">
-        <SelectionGlow on={props.selected} inset={-9} />
+        <SelectionGlow on={props.selected || !!props.dropping} inset={-9} />
         <span
           class="relative grid place-items-center rounded-full p-[3px]"
           style={{
@@ -634,6 +748,8 @@ function DocNode(props: {
   hit: boolean;
   dim: boolean;
   selected: boolean;
+  /** An agent is hovering over this document, and releasing would share it. */
+  dropping?: boolean;
   onDrag: (e: PointerEvent) => void;
 }) {
   const r = () => (props.org ? ORG_R : DOC_R);
@@ -651,7 +767,7 @@ function DocNode(props: {
       }}
     >
       <span class="relative grid place-items-center">
-        <SelectionGlow on={props.selected} inset={-8} />
+        <SelectionGlow on={props.selected || !!props.dropping} inset={-8} />
         <span
           class="relative grid place-items-center rounded-full border transition-colors"
           classList={{
