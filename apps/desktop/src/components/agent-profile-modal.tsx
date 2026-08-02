@@ -29,18 +29,32 @@ import type { Agent } from "~/lib/types";
  * tools from the right, the agent in the middle — so splitting it would mean
  * rendering half a picture twice.
  */
-type Tab = "overview" | "capabilities" | "knowledge" | "activity" | "routines";
+type Tab = "identity" | "capabilities" | "knowledge" | "testing" | "activity" | "routines";
 
+/**
+ * The agent workspace's nav.
+ *
+ * "Overview" was a misnomer: the tab held an editable form for the agent's name,
+ * role, tone, persona, instructions and reporting line — everything that makes
+ * it the agent it is. That is Identity, and calling it what it is means the
+ * first tab now says what pressing it does.
+ *
+ * Skills and Tools stay merged as Capabilities on purpose: `CapabilitiesTab`
+ * draws them as ONE graph — skills wiring in from the left, tools from the
+ * right, the agent between — so splitting them would render half a picture
+ * twice.
+ */
 const TABS: [Tab, string][] = [
-  ["overview", "Overview"],
+  ["identity", "Identity"],
   ["capabilities", "Capabilities"],
   ["knowledge", "Knowledge"],
+  ["testing", "Testing"],
   ["activity", "Activity"],
   ["routines", "Routines"],
 ];
 
 export function AgentProfileModal(props: { agent: Agent; onClose: () => void }) {
-  const [tab, setTab] = createSignal<Tab>("overview");
+  const [tab, setTab] = createSignal<Tab>("identity");
   const [routines, setRoutines] = createSignal(false);
 
   const agent = () => props.agent;
@@ -198,7 +212,7 @@ export function AgentProfileModal(props: { agent: Agent; onClose: () => void }) 
             </nav>
 
             <div class="aular-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-auto px-5 py-4">
-              <Show when={tab() === "overview"}>
+              <Show when={tab() === "identity"}>
                 <SoulTab agent={agent()} />
               </Show>
               <Show when={tab() === "capabilities"}>
@@ -210,6 +224,27 @@ export function AgentProfileModal(props: { agent: Agent; onClose: () => void }) 
               </Show>
               <Show when={tab() === "knowledge"}>
                 <KnowledgeTab agent={agent()} />
+              </Show>
+              {/* The slot, not the feature. Testing an agent means running a
+                  turn that does not land in its real thread — a sandbox
+                  session the gateway would have to grant — so the tab states
+                  what it is for rather than pretending to offer it. */}
+              <Show when={tab() === "testing"}>
+                <div class="flex max-w-[520px] flex-col gap-2 py-6">
+                  <p class="text-[13px] font-semibold text-[var(--text)]">
+                    Try this agent without touching its thread
+                  </p>
+                  <p class="text-[12.5px] leading-relaxed text-[var(--muted)]">
+                    A scratch turn against {agent().name} — same persona, tools and
+                    knowledge, but the exchange is discarded rather than kept, so a
+                    prompt can be tried without leaving a trace in the conversation
+                    or the agent's memory.
+                  </p>
+                  <p class="text-[11.5px] leading-relaxed text-[var(--faint)]">
+                    Not wired yet: a throwaway turn needs a session the runtime
+                    creates and drops, which is engine work rather than a screen.
+                  </p>
+                </div>
               </Show>
               <Show when={tab() === "activity"}>
                 <WorkTab agent={agent()} />
