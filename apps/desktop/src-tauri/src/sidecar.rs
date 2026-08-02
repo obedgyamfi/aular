@@ -179,6 +179,39 @@ pub fn restart_agent_runtime(app: AppHandle) {
     spawn_gateway(&app);
 }
 
+/// Point the local harness at the account that just signed in.
+///
+/// Invoked by the app once it holds credentials from the server. Writes them
+/// beside the Hermes profile and restarts the gateway to pick them up. Until
+/// this runs the gateway has no address to deliver a reply to, which is what
+/// makes an unsigned-in app genuinely unable to work rather than merely
+/// unwilling to.
+#[tauri::command]
+pub fn configure_agent_runtime(
+    app: AppHandle,
+    core_api_url: String,
+    internal_token: String,
+    home_channel_id: String,
+) -> Result<(), String> {
+    let creds = crate::runtime::Credentials {
+        core_api_url,
+        internal_token,
+        home_channel_id,
+    };
+    crate::runtime::store_credentials(&creds).map_err(|e| e.to_string())?;
+    log::info!("runtime: credentials stored for {}", creds.core_api_url);
+    restart_agent_runtime(app);
+    Ok(())
+}
+
+/// Forget the account's credentials on sign-out and stop the harness with them.
+#[tauri::command]
+pub fn sign_out_agent_runtime(app: AppHandle) {
+    crate::runtime::clear_credentials();
+    shutdown_gateway(&app);
+    log::info!("runtime: credentials cleared, harness stopped");
+}
+
 /// Stop the gateway. Called on exit, alongside the backend.
 pub fn shutdown_gateway(app: &AppHandle) {
     if let Some(mut child) = app.state::<Gateway>().0.lock().unwrap().take() {

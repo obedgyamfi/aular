@@ -89,14 +89,20 @@ pub fn run() {
                 license::HAS_ENGINE,
                 licensed
             );
-            sidecar::spawn(app.handle(), licensed)?;
+            // No backend is spawned here any more. The organization lives on the
+            // server the user signs in to, and bundling a second one would mean
+            // two databases disagreeing about the same org. What stays local is
+            // the harness: this is the machine that does the work.
             sidecar::spawn_gateway(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar::restart_agent_runtime])
+        .invoke_handler(tauri::generate_handler![
+            sidecar::restart_agent_runtime,
+            sidecar::configure_agent_runtime,
+            sidecar::sign_out_agent_runtime
+        ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                sidecar::shutdown(window.app_handle());
                 sidecar::shutdown_gateway(window.app_handle());
             }
         })

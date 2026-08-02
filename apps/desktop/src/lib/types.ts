@@ -159,9 +159,27 @@ export interface RealtimeEvent {
     | "brief.created"
     | "brief.updated"
     | "project.created"
-    | "project.updated";
+    | "project.updated"
+    // Work, not a notification: the server is asking this machine to run a turn,
+    // because it has no way to run one itself. See lib/harness.ts.
+    | "turn.requested";
   conversation_id?: string;
   data?: any;
+}
+
+/** A turn the server wants this machine's harness to run. */
+export interface TurnRequest {
+  conversation_id: string;
+  content: string;
+  /** The organization assembled for this turn. Sent every time, never cached. */
+  persona: string;
+}
+
+/** What the server issues so this machine's harness can report back to it. */
+export interface RuntimeCredentials {
+  core_api_url: string;
+  internal_token: string;
+  home_channel_id?: string;
 }
 
 // ── tasks (the A2A lifecycle over dispatches) ────────────────────────────────

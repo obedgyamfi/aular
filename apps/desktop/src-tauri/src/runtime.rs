@@ -106,6 +106,37 @@ pub fn enforce_fresh_data() {
 
 /// The secret the backend and the gateway authenticate to each other with.
 /// Created on first run, then stable.
+/// What the server issued this account so its harness can report back.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Credentials {
+    pub core_api_url: String,
+    pub internal_token: String,
+    #[serde(default)]
+    pub home_channel_id: String,
+}
+
+fn credentials_path() -> PathBuf {
+    data_dir().join("runtime-credentials.json")
+}
+
+/// The cached credentials, if this machine has ever signed in.
+pub fn credentials() -> Option<Credentials> {
+    let raw = fs::read_to_string(credentials_path()).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Cache what the server issued. Written next to the profile rather than held
+/// in memory so a restart does not require signing in again — the session
+/// token expiring is what ends access, not the app closing.
+pub fn store_credentials(c: &Credentials) -> std::io::Result<()> {
+    fs::write(credentials_path(), serde_json::to_string(c).unwrap_or_default())
+}
+
+/// Forget them on sign-out, so the harness stops being able to report anywhere.
+pub fn clear_credentials() {
+    let _ = fs::remove_file(credentials_path());
+}
+
 pub fn internal_token() -> String {
     let path = data_dir().join("internal-token");
     if let Ok(existing) = fs::read_to_string(&path) {
@@ -229,21 +260,31 @@ pub fn prepare_hermes_profile(resources: Option<PathBuf>) -> std::io::Result<()>
         }
     }
 
-    // The gateway talks to *our* backend, on *our* port, with *our* secret.
+    // Where the gateway reports to, and with what secret.
+    //
+    // Both belong to the account rather than to this machine: the organization
+    // lives on the server, and the token is the one that server issued to this
+    // user. They arrive from /api/v1/runtime/credentials after sign-in and are
+    // cached beside the profile. Before that there is nothing to write, and the
+    // gateway has nowhere to report — which is correct. No account, no harness.
     let mut env = format!(
         "AULAR_ADAPTER_PORT={GATEWAY_PORT}\n\
-         AULAR_INTERNAL_TOKEN={}\n\
-         AULAR_CORE_API_URL=http://127.0.0.1:{API_PORT}\n\
-         AULAR_ALLOW_ALL_USERS=true\n",
-        internal_token()
+         AULAR_ALLOW_ALL_USERS=true\n"
     );
-    // Where cron results and cross-platform messages land: the owner's chat
-    // with the system agent. Known only once someone has signed up — at app
-    // boot the backend may not even be listening yet, and that's fine: the
-    // post-model-connect gateway restart passes through here again and gets
-    // it. Without this the user meets Hermes' "/sethome" nudge.
-    if let Some(chat) = fetch_home_channel() {
-        env.push_str(&format!("AULAR_HOME_CHANNEL={chat}\n"));
+    match credentials() {
+        Some(c) => {
+            env.push_str(&format!(
+                "AULAR_CORE_API_URL={}\nAULAR_INTERNAL_TOKEN={}\n",
+                c.core_api_url, c.internal_token
+            ));
+            // Where cron results and cross-platform messages land: the owner's
+            // chat with the system agent. Without it the user meets Hermes'
+            // "/sethome" nudge. Absent until the server has one to give.
+            if !c.home_channel_id.is_empty() {
+                env.push_str(&format!("AULAR_HOME_CHANNEL={}\n", c.home_channel_id));
+            }
+        }
+        None => log::info!("runtime: no credentials yet — the gateway waits for sign-in"),
     }
     fs::write(home.join(".env"), env)?;
 
