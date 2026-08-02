@@ -171,10 +171,29 @@ export function parseIntent(text: string, agents: Agent[], projects: Project[] =
     );
   if (hire && /\b(hire|recruit|bring\s+on)\b/i.test(t)) {
     const role = hire[1]!.trim().replace(/\s+agent$/i, "");
-    return { kind: "hire", role, name: hire[2] ?? hire[3] };
+    // One hire, or hand it over. The capture is greedy across conjunctions, so
+    // "hire a QA engineer and a backend dev" matched as a SINGLE role named
+    // "QA engineer and a backend dev" — one wrong agent rather than two right
+    // ones. AULAR builds a whole team from one block, so anything compound
+    // belongs to it. An ask with commas already fell through, and behaviour
+    // that turns on punctuation is worse than either answer consistently.
+    if (!isCompound(role)) {
+      return { kind: "hire", role, name: hire[2] ?? hire[3] };
+    }
   }
 
   return { kind: "delegate", text: t };
+}
+
+/**
+ * Does this name more than one thing?
+ *
+ * Each quick parser here resolves exactly one entity. When an ask covers
+ * several, declining it is the honest move: the system agent can create a whole
+ * team, or write a document per teammate, from a single block.
+ */
+function isCompound(s: string): boolean {
+  return /(,|\band\b|\bplus\b|&|\bthen\b)/i.test(s);
 }
 
 function titleCase(s: string): string {
