@@ -16,7 +16,6 @@ import type {
   OrgDocument,
   Routine,
   RuntimeStatus,
-  RuntimeCredentials,
   ScheduledJob,
   Task,
   TokenUsage,
@@ -122,8 +121,6 @@ export const api = {
   // ── account ───────────────────────────────────────────────────────────
   health: () => call<Health>("/healthz"),
   runtimeStatus: () => v1<RuntimeStatus>("/runtime/status"),
-  /** What this machine's harness needs to report back to the account's server. */
-  runtimeCredentials: () => v1<RuntimeCredentials>("/runtime/credentials"),
   runtimeInstall: () => v1<RuntimeStatus>("/runtime/install", { method: "POST" }),
   me: () => call<AuthUser>("/auth/me"),
   login: async (email: string, password: string) => {

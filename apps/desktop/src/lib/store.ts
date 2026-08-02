@@ -1,13 +1,6 @@
 import { createStore, produce } from "solid-js/store";
 
 import { api, openRealtime } from "./api";
-import {
-  armHarness,
-  configureAgentRuntime,
-  disarmHarness,
-  runTurnLocally,
-  signOutAgentRuntime,
-} from "./harness";
 import type {
   Agent,
   ApiProject,
@@ -25,7 +18,6 @@ import type {
   RuntimeStatus,
   Task,
   ToolCall,
-  TurnRequest,
 } from "./types";
 import { TERMINAL_TASK_STATES } from "./types";
 import type { Proposal } from "./intent";
@@ -841,27 +833,6 @@ export const actions = {
     stopRealtime?.();
     stopRealtime = openRealtime(handleEvent);
     void actions.refreshRuntime();
-    void actions.armLocalHarness();
-  },
-
-  /**
-   * Collect this account's runtime credentials and point the local harness at
-   * the server that issued them.
-   *
-   * Runs on every load rather than only at sign-in: the credentials live on
-   * disk beside the Hermes profile, and a user who moves their account to a
-   * different server would otherwise keep a gateway reporting to the old one.
-   */
-  async armLocalHarness() {
-    try {
-      const c = await api.runtimeCredentials();
-      armHarness(c.internal_token, state.user?.id ?? "");
-      await configureAgentRuntime(c);
-    } catch (err) {
-      // Not fatal to the UI: the org still reads. It does mean no turn can run
-      // on this machine, and the first attempt will say so plainly.
-      console.error("harness: could not arm the local runtime", err);
-    }
   },
 
   /** Re-sync after a dropped socket — the prototype's fix for stuck rows. */
@@ -881,10 +852,6 @@ export const actions = {
   async signOut() {
     stopRealtime?.();
     stopRealtime = null;
-    // The harness goes with the account. Left armed, a gateway on this machine
-    // would still hold a token for an org nobody is signed in to.
-    disarmHarness();
-    void signOutAgentRuntime();
     await api.logout();
     set({
       user: null,
@@ -1220,20 +1187,6 @@ function handleEvent(e: RealtimeEvent) {
   const convoId = e.conversation_id ?? e.data?.conversation_id;
 
   switch (e.type) {
-    // The server has no harness; this machine is one. Hand the turn to the
-    // gateway running beside us. The reply comes back the ordinary way — Hermes
-    // posts it to the server and it returns as message.created — so there is
-    // nothing to await here.
-    case "turn.requested": {
-      const req = e.data as TurnRequest;
-      runTurnLocally(req).catch((err: Error) => {
-        console.error("harness: could not run turn", err);
-        clearWorking(req.conversation_id);
-        set("error", `Could not reach the agent runtime on this machine. ${err.message}`);
-      });
-      return;
-    }
-
     case "message.created": {
       const msg = e.data as Message;
       if (!convoId) return;

@@ -1,17 +1,18 @@
 //! The agent runtime.
 //!
-//! AULAR runs one child process: a Hermes gateway, the thing that actually
-//! thinks and uses tools. It is ours to start, supervise and kill — a user
-//! double-clicks an icon and gets a working harness, not a checklist of
-//! services to run.
+//! AULAR runs two child processes: the Go backend (the app's API and database)
+//! and a Hermes gateway (the thing that actually thinks and uses tools). Both
+//! are ours to start, supervise, and kill — a user double-clicks an icon and
+//! gets a working organization, not a checklist of services to run.
 //!
-//! The organization it works for lives on the account's server, not here, so
-//! the address and the secret it reports with are issued at sign-in rather
-//! than minted locally. Nothing is read from the ambient environment, because
-//! a shipped app has none.
+//! They must agree on a shared secret and on ports, so the shell mints those
+//! and hands the same values to both. Nothing is read from the ambient
+//! environment, because a shipped app has none.
 
 use std::fs;
 use std::path::PathBuf;
+
+use rand::RngCore;
 
 /// The app's data directory.
 ///
@@ -75,7 +76,7 @@ pub fn hermes_home() -> PathBuf {
 /// three builds back. Until the schema stabilizes and earns real migrations,
 /// a build that doesn't recognize the data rotates it aside (one generation
 /// kept as `aular-desktop.old`) and starts fresh. Called once, before the
-/// gateway sees the directory.
+/// backend or gateway see the directory.
 pub fn enforce_fresh_data() {
     let dir = data_dir();
     let stamp = dir.join("build-stamp");
@@ -103,46 +104,29 @@ pub fn enforce_fresh_data() {
     let _ = fs::write(&stamp, current);
 }
 
-/// What the server issued this account so its harness can report back.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Credentials {
-    pub core_api_url: String,
-    pub internal_token: String,
-    #[serde(default)]
-    pub home_channel_id: String,
+/// The secret the backend and the gateway authenticate to each other with.
+/// Created on first run, then stable.
+pub fn internal_token() -> String {
+    let path = data_dir().join("internal-token");
+    if let Ok(existing) = fs::read_to_string(&path) {
+        let t = existing.trim().to_string();
+        if !t.is_empty() {
+            return t;
+        }
+    }
+    let mut raw = [0u8; 32];
+    rand::rng().fill_bytes(&mut raw);
+    let token = raw.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let _ = fs::write(&path, &token);
+    token
 }
 
-fn credentials_path() -> PathBuf {
-    data_dir().join("runtime-credentials.json")
-}
-
-/// The cached credentials, if this machine has ever signed in.
-pub fn credentials() -> Option<Credentials> {
-    let raw = fs::read_to_string(credentials_path()).ok()?;
-    serde_json::from_str(&raw).ok()
-}
-
-/// Cache what the server issued. Written next to the profile rather than held
-/// in memory so a restart does not require signing in again — the session
-/// token expiring is what ends access, not the app closing.
-pub fn store_credentials(c: &Credentials) -> std::io::Result<()> {
-    fs::write(credentials_path(), serde_json::to_string(c).unwrap_or_default())
-}
-
-/// Forget them on sign-out, so the harness stops being able to report anywhere.
-pub fn clear_credentials() {
-    let _ = fs::remove_file(credentials_path());
-}
-
-/// The gateway's loopback port. Fixed rather than negotiated: the webview's CSP
-/// has to reach it, and only one AULAR window runs at a time.
-///
-/// The app no longer mints a secret of its own. The token the harness uses is
-/// the one the account's server issued — see Credentials above.
+/// The loopback ports. Fixed, because the webview's CSP has to name them.
+pub const API_PORT: &str = "8787";
 pub const GATEWAY_PORT: &str = "8644";
 
 /// Where the hermes executable actually is: the user's own install (PATH)
-/// wins; otherwise the managed runtime onboarding installs into our data
+/// wins; otherwise the managed runtime the backend bootstraps into our data
 /// directory. None means neither exists yet — onboarding's problem, not ours.
 pub fn hermes_executable() -> Option<PathBuf> {
     if let Ok(path) = which("hermes") {
@@ -155,6 +139,40 @@ pub fn hermes_executable() -> Option<PathBuf> {
         venv.join("bin").join("hermes")
     };
     managed.exists().then_some(managed)
+}
+
+/// Ask our own backend which conversation is the gateway's home channel.
+/// A hand-rolled loopback GET — one request to ourselves does not earn an
+/// HTTP client dependency. None on any failure; the caller treats it as
+/// "not known yet".
+fn fetch_home_channel() -> Option<String> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect_timeout(
+        &format!("127.0.0.1:{API_PORT}").parse().ok()?,
+        std::time::Duration::from_millis(800),
+    )
+    .ok()?;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+        .ok()?;
+    write!(
+        stream,
+        "GET /internal/home-channel HTTP/1.1\r\nHost: 127.0.0.1:{API_PORT}\r\n\
+         X-Aular-Internal-Token: {}\r\nConnection: close\r\n\r\n",
+        internal_token()
+    )
+    .ok()?;
+    let mut body = String::new();
+    stream.read_to_string(&mut body).ok()?;
+    if !body.starts_with("HTTP/1.1 200") {
+        return None;
+    }
+    // {"chat_id":"…"} — pull the value without a JSON dependency.
+    let idx = body.find("\"chat_id\":\"")? + "\"chat_id\":\"".len();
+    let rest = &body[idx..];
+    let end = rest.find('"')?;
+    let chat = &rest[..end];
+    (!chat.is_empty()).then(|| chat.to_string())
 }
 
 /// A minimal `which` — enough to answer "is hermes on PATH", without a crate.
@@ -172,8 +190,8 @@ fn which(name: &str) -> Result<PathBuf, ()> {
 }
 
 /// Prepare the app's Hermes profile: it needs the AULAR platform plugin and
-/// the tool-feed hook, plus an .env that points the gateway at the account's
-/// server. The .env is authoritative — Hermes reads a profile's .env over the
+/// the tool-feed hook, plus an .env that points the gateway back at our own
+/// backend. The .env is authoritative — Hermes reads a profile's .env over the
 /// ambient environment, which is exactly the behaviour we want here.
 ///
 /// `resources` is the app's bundled `resources/hermes` directory — the copy of
@@ -211,31 +229,21 @@ pub fn prepare_hermes_profile(resources: Option<PathBuf>) -> std::io::Result<()>
         }
     }
 
-    // Where the gateway reports to, and with what secret.
-    //
-    // Both belong to the account rather than to this machine: the organization
-    // lives on the server, and the token is the one that server issued to this
-    // user. They arrive from /api/v1/runtime/credentials after sign-in and are
-    // cached beside the profile. Before that there is nothing to write, and the
-    // gateway has nowhere to report — which is correct. No account, no harness.
+    // The gateway talks to *our* backend, on *our* port, with *our* secret.
     let mut env = format!(
         "AULAR_ADAPTER_PORT={GATEWAY_PORT}\n\
-         AULAR_ALLOW_ALL_USERS=true\n"
+         AULAR_INTERNAL_TOKEN={}\n\
+         AULAR_CORE_API_URL=http://127.0.0.1:{API_PORT}\n\
+         AULAR_ALLOW_ALL_USERS=true\n",
+        internal_token()
     );
-    match credentials() {
-        Some(c) => {
-            env.push_str(&format!(
-                "AULAR_CORE_API_URL={}\nAULAR_INTERNAL_TOKEN={}\n",
-                c.core_api_url, c.internal_token
-            ));
-            // Where cron results and cross-platform messages land: the owner's
-            // chat with the system agent. Without it the user meets Hermes'
-            // "/sethome" nudge. Absent until the server has one to give.
-            if !c.home_channel_id.is_empty() {
-                env.push_str(&format!("AULAR_HOME_CHANNEL={}\n", c.home_channel_id));
-            }
-        }
-        None => log::info!("runtime: no credentials yet — the gateway waits for sign-in"),
+    // Where cron results and cross-platform messages land: the owner's chat
+    // with the system agent. Known only once someone has signed up — at app
+    // boot the backend may not even be listening yet, and that's fine: the
+    // post-model-connect gateway restart passes through here again and gets
+    // it. Without this the user meets Hermes' "/sethome" nudge.
+    if let Some(chat) = fetch_home_channel() {
+        env.push_str(&format!("AULAR_HOME_CHANNEL={chat}\n"));
     }
     fs::write(home.join(".env"), env)?;
 
