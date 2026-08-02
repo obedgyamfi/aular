@@ -51,7 +51,6 @@ pub fn run() {
                 .with_state_flags(STATE_FLAGS)
                 .build(),
         )
-        .manage(sidecar::Backend::default())
         .manage(sidecar::Gateway::default())
         // No native menu: the window is undecorated and the ☰ menu in the
         // title bar is the app's only menu. Setting one here renders a second
