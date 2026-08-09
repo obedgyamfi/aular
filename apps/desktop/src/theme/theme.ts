@@ -96,7 +96,9 @@ const DESIGN_ASH = `
 const SCHEME_KEY = "aular-color-scheme";
 const STYLE_ID = "aular-theme";
 
-const stored = (localStorage.getItem(SCHEME_KEY) as ColorScheme | null) ?? "system";
+// AULAR ships on the constellation theme by default — translucent panels over a
+// star field. A stored choice still wins the moment the user picks one.
+const stored = (localStorage.getItem(SCHEME_KEY) as ColorScheme | null) ?? "constellation";
 const [colorScheme, setSchemeSignal] = createSignal<ColorScheme>(stored);
 
 export { colorScheme };
@@ -146,6 +148,10 @@ const DESIGN_LIGHT = `
   /* No serif anywhere: Discord sets the whole product in one sans, so the token
      that used to carry Georgia now points at the UI face. */
   --serif:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  /* Monochrome accent — near-black on light. Buttons, active states and the mark
+     stop being blue. This only re-points the DEFAULT ramp; the accent picker
+     still works, since an explicit pick overrides these via setAccent(). */
+  --blurple:#1c1c1e;--blurple-hover:#000000;--blurple-text:#1c1c1e;--blurple-soft:rgba(0,0,0,.06);--accent-2:#3a3a3e;--accent-grad:#1c1c1e;--on-accent:#ffffff;
 `;
 
 /**
@@ -163,6 +169,8 @@ const DESIGN_DARK = `
      grey ramp (grey-2 is darker than grey-1 here). Discord's exact value. */
   --row-hover:#32353b;
   --shadow-1:0 1px 0 rgba(0,0,0,.2),0 2px 8px rgba(0,0,0,.28);--shadow-2:0 8px 24px rgba(0,0,0,.48);
+  /* Monochrome accent — white on dark. */
+  --blurple:#ffffff;--blurple-hover:#e6e6e8;--blurple-text:#ffffff;--blurple-soft:rgba(255,255,255,.12);--accent-2:#c8c8cc;--accent-grad:#ffffff;--on-accent:#191919;
 `;
 
 /**

@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 
 import { AgentProfileModal } from "~/components/agent-profile-modal";
 import { AuthScreen } from "~/components/auth-screen";
+import { OnboardingFlow } from "~/components/onboarding-flow";
 import { Backdrop } from "~/components/backdrop";
 import { ResizeHandles } from "~/components/resize-handles";
 import { SchedulesPanel } from "~/components/schedules-panel";
@@ -101,6 +102,27 @@ export function App() {
       ? state.agents.find((a) => a.id === state.profileAgentId)
       : undefined;
 
+  // First-run setup runs once per account, between the auth gate and the shell:
+  // choose a runtime (Hermes by default) and, optionally, connect a model. A
+  // per-user localStorage flag remembers completion; an account that already has
+  // staff has plainly been through it, so a returning org never sees it again.
+  const onboardedKey = () => (state.user ? `aular-onboarded:${state.user.id}` : "");
+  const [onboardedAt, setOnboardedAt] = createSignal(0);
+  const needsOnboarding = () => {
+    onboardedAt();
+    if (!state.user) return false;
+    if (localStorage.getItem(onboardedKey()) === "1") return false;
+    if (state.agents.some((a) => a.role !== "system")) return false;
+    return true;
+  };
+  const finishOnboarding = () => {
+    if (state.user) localStorage.setItem(onboardedKey(), "1");
+    // Drop the freshly set-up user into the org canvas — the AULAR agent rides
+    // in OrgPanel's side chat, ready to build the org from a prompt.
+    actions.setRegister("org");
+    setOnboardedAt(Date.now());
+  };
+
   return (
     <div class="relative flex h-full min-h-0 min-w-0 flex-col bg-v2-background-bg-deep">
       {/* An undecorated window has no frame to grab, so the resize border is
@@ -134,6 +156,7 @@ export function App() {
                 out of the rail the way Discord's does. The titlebar shares that
                 colour too, which is what lets the corner read as one continuous
                 surface instead of a notch. */}
+            <Show when={needsOnboarding()} fallback={<>
             <div class="relative flex min-h-0 shrink-0 bg-[var(--rail)]">
               <CommunityRail />
               <ChannelSidebar onSearch={() => setPalette(true)} />
@@ -202,6 +225,9 @@ export function App() {
                 onClose={() => setPalette(false)}
                 onHire={() => actions.hireAgent()}
               />
+            </Show>
+            </>}>
+              <OnboardingFlow onDone={finishOnboarding} />
             </Show>
           </Show>
         </Show>

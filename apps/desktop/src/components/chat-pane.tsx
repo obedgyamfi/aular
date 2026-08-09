@@ -9,7 +9,6 @@ import { SystemTag } from "~/components/system-tag";
 import { Tooltip } from "~/components/tooltip";
 import { Mark } from "~/components/logo";
 import { MessageList } from "~/components/message-list";
-import { Onboarding } from "~/components/onboarding";
 import { RoutinesModal } from "~/components/routines-modal";
 import { TaskStrip } from "~/components/task-state";
 import {
@@ -69,23 +68,22 @@ export function ChatPane() {
       <Show
         when={activeAgent()}
         fallback={
-          // No staff yet means this is a first run — walk them in. Otherwise
-          // they simply haven't picked a thread.
-          <Show when={hasStaff()} fallback={<Onboarding />}>
-            <div class="flex min-h-0 flex-1 items-center justify-center">
-              <div class="flex max-w-sm flex-col items-center gap-3 text-center">
-                <Mark class="h-8 w-auto opacity-40" />
-                <div class="flex flex-col gap-1">
-                  <p class="text-[13px] text-v2-text-text-base">
-                    Select an agent to start
-                  </p>
-                  <p class="text-[12px] text-v2-text-text-muted">
-                    They run on your machine, on your own model key.
-                  </p>
-                </div>
+          // No thread picked yet. First-run setup and org building happen
+          // elsewhere now — the onboarding gate, then the org canvas — so this
+          // is just the empty conversation state.
+          <div class="flex min-h-0 flex-1 items-center justify-center">
+            <div class="flex max-w-sm flex-col items-center gap-3 text-center">
+              <Mark class="h-8 w-auto opacity-40" />
+              <div class="flex flex-col gap-1">
+                <p class="text-[13px] text-v2-text-text-base">
+                  Select an agent to start
+                </p>
+                <p class="text-[12px] text-v2-text-text-muted">
+                  They run on your machine, on your own model key.
+                </p>
               </div>
             </div>
-          </Show>
+          </div>
         }
       >
         {(agent) => (
