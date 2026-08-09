@@ -21,7 +21,6 @@ and actually gets delivered here when it fires — unlike the api_server
 platform, which hardwires async_delivery=False.
 """
 
-import asyncio
 import base64
 import logging
 import mimetypes
@@ -162,10 +161,16 @@ def _extract_local_media(content: str) -> tuple[str, List[Dict[str, str]]]:
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned, media
 
-def _split_response_chunks(content: str) -> List[str]:
-    """Split model-authored chat chunks while preserving unsplit normal replies."""
-    chunks = [chunk.strip() for chunk in AULAR_CHUNK_RE.split(content or "")]
-    return [chunk for chunk in chunks if chunk]
+def _heal_legacy_chunks(content: str) -> str:
+    """Turn a retired chunk delimiter into the paragraph break it always was.
+
+    Replies used to be split on this marker and delivered as separate messages
+    to mimic texting. One answer then arrived as several bubbles, each with its
+    own portrait and timestamp, and it landed in visible jumps rather than
+    streaming. Agents are no longer told to emit the marker; anything still
+    carrying it reads as one message with a blank line where the split was.
+    """
+    return AULAR_CHUNK_RE.sub("", content or "").strip()
 
 
 async def _deliver_to_core_api(
@@ -236,35 +241,22 @@ async def _edit_core_api_message(
         return False
 
 
-async def _deliver_chunked_to_core_api(
+async def _deliver_reply_to_core_api(
     conversation_id: str,
     content: str,
     media: Optional[List[Dict[str, str]]] = None,
 ) -> Optional[str]:
-    """Deliver AULAR replies as separate chat bubbles when the model marks chunks.
+    """Deliver one reply as one message.
 
     Used for non-streaming delivery (proactive/cron pushes, or when gateway
-    streaming is off). The prompt asks AULAR agents to insert <<<AULAR_CHUNK>>>
-    between semantically distinct text-message-sized points. If no delimiter is
-    present, this preserves single-message behavior. Media is attached to the
-    last chunk. Returns the last delivered message_id, or None on failure.
+    streaming is off). This used to split on <<<AULAR_CHUNK>>> and POST once per
+    piece with a sleep between them, so a single answer became several bubbles
+    arriving like text messages. That was the effect being asked for; it is not
+    any more. One reply, one message, and the stream carries the pacing.
     """
     media = media or []
-    content = _strip_cron_envelope(content)
-    chunks = _split_response_chunks(content)
-    if not chunks:
-        return await _deliver_to_core_api(conversation_id, "", media=media)
-
-    last_id: Optional[str] = None
-    for index, chunk in enumerate(chunks):
-        chunk_media = media if index == len(chunks) - 1 else []
-        result = await _deliver_to_core_api(conversation_id, chunk, media=chunk_media)
-        if result is None:
-            return None
-        last_id = result
-        if index < len(chunks) - 1:
-            await asyncio.sleep(0.2)
-    return last_id
+    content = _heal_legacy_chunks(_strip_cron_envelope(content))
+    return await _deliver_to_core_api(conversation_id, content, media=media)
 
 
 async def _post_activity(conversation_id: str, state: str = "working") -> None:
@@ -405,11 +397,12 @@ class AularAdapter(BasePlatformAdapter):
         metadata: Optional[Dict[str, Any]] = None,
     ):
         # Streaming path: the gateway's stream consumer marks the first send of a
-        # reply segment with expect_edits, then grows it via edit_message(). We
-        # keep the WHOLE segment as ONE message (delimiters and all) so the
-        # consumer's completeness check stays satisfied and it never fires a
-        # duplicate fallback send. The AULAR web UI splits that one message on
-        # <<<AULAR_CHUNK>>> into separate chat bubbles at render time.
+        # reply segment with expect_edits, then grows it via edit_message(). One
+        # segment stays ONE message, which also keeps the consumer's completeness
+        # check satisfied so it never fires a duplicate fallback send. Nothing
+        # downstream splits it any more — the app used to divide this single
+        # message into separate bubbles at render time, and the reply arrived in
+        # visible jumps instead of streaming.
         if (metadata or {}).get("expect_edits"):
             text = _strip_stream_cursor(content)
             msg_id = await _deliver_to_core_api(chat_id, text or " ")
@@ -420,7 +413,7 @@ class AularAdapter(BasePlatformAdapter):
         # Non-streaming path (proactive/cron pushes, or streaming disabled):
         # deliver the whole reply, split into bubbles on the chunk delimiter.
         content, media = _extract_local_media(content)
-        last_id = await _deliver_chunked_to_core_api(chat_id, content, media=media)
+        last_id = await _deliver_reply_to_core_api(chat_id, content, media=media)
         if last_id is None:
             return SendResult(success=False, error="core-api delivery failed")
         return SendResult(success=True, message_id=last_id or str(int(time.time() * 1000)))
@@ -554,7 +547,7 @@ async def _standalone_send(
         media_item = _media_item(str(path_or_url))
         if media_item:
             media.append(media_item)
-    result = await _deliver_chunked_to_core_api(chat_id, message, media=media)
+    result = await _deliver_reply_to_core_api(chat_id, message, media=media)
     return {"success": result is not None, "chat_id": chat_id}
 
 

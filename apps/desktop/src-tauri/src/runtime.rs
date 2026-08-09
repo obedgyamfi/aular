@@ -141,6 +141,40 @@ pub fn hermes_executable() -> Option<PathBuf> {
     managed.exists().then_some(managed)
 }
 
+/// Ask our own backend which conversation is the gateway's home channel.
+/// A hand-rolled loopback GET — one request to ourselves does not earn an
+/// HTTP client dependency. None on any failure; the caller treats it as
+/// "not known yet".
+fn fetch_home_channel() -> Option<String> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect_timeout(
+        &format!("127.0.0.1:{API_PORT}").parse().ok()?,
+        std::time::Duration::from_millis(800),
+    )
+    .ok()?;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+        .ok()?;
+    write!(
+        stream,
+        "GET /internal/home-channel HTTP/1.1\r\nHost: 127.0.0.1:{API_PORT}\r\n\
+         X-Aular-Internal-Token: {}\r\nConnection: close\r\n\r\n",
+        internal_token()
+    )
+    .ok()?;
+    let mut body = String::new();
+    stream.read_to_string(&mut body).ok()?;
+    if !body.starts_with("HTTP/1.1 200") {
+        return None;
+    }
+    // {"chat_id":"…"} — pull the value without a JSON dependency.
+    let idx = body.find("\"chat_id\":\"")? + "\"chat_id\":\"".len();
+    let rest = &body[idx..];
+    let end = rest.find('"')?;
+    let chat = &rest[..end];
+    (!chat.is_empty()).then(|| chat.to_string())
+}
+
 /// A minimal `which` — enough to answer "is hermes on PATH", without a crate.
 fn which(name: &str) -> Result<PathBuf, ()> {
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat", ""] } else { &[""] };
@@ -196,13 +230,21 @@ pub fn prepare_hermes_profile(resources: Option<PathBuf>) -> std::io::Result<()>
     }
 
     // The gateway talks to *our* backend, on *our* port, with *our* secret.
-    let env = format!(
+    let mut env = format!(
         "AULAR_ADAPTER_PORT={GATEWAY_PORT}\n\
          AULAR_INTERNAL_TOKEN={}\n\
          AULAR_CORE_API_URL=http://127.0.0.1:{API_PORT}\n\
          AULAR_ALLOW_ALL_USERS=true\n",
         internal_token()
     );
+    // Where cron results and cross-platform messages land: the owner's chat
+    // with the system agent. Known only once someone has signed up — at app
+    // boot the backend may not even be listening yet, and that's fine: the
+    // post-model-connect gateway restart passes through here again and gets
+    // it. Without this the user meets Hermes' "/sethome" nudge.
+    if let Some(chat) = fetch_home_channel() {
+        env.push_str(&format!("AULAR_HOME_CHANNEL={chat}\n"));
+    }
     fs::write(home.join(".env"), env)?;
 
     // A stale pid file makes Hermes think a gateway is already running.

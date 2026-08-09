@@ -1,9 +1,10 @@
 import { createEffect, createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
 
+import { ModelDropdown } from "~/components/model-dropdown";
 import { api } from "~/lib/api";
 import { openExternal } from "~/lib/external";
-import { actions, state } from "~/lib/store";
+import { actions, harnessCapable, state } from "~/lib/store";
 
 /**
  * Connect a model — the way Hermes' own CLI does it: pick who you sign in
@@ -109,7 +110,13 @@ export function ModelSettings() {
         )}
       </Show>
 
-      {/* The sign-in path, first — it's what most people have. */}
+      {/* The sign-in path, first — it's what most people have.
+
+          Offered only where the agent runtime owns model credentials. This is
+          Hermes' own device-code flow, driven through its CLI; a harness reached
+          over ACP arrives already signed in to whatever it uses, and offering to
+          sign it in again would be offering a button that cannot work. */}
+      <Show when={harnessCapable("modelAuth")}>
       <button
         type="button"
         onClick={() => setChoice(choice() === "codex" ? null : "codex")}
@@ -138,6 +145,7 @@ export function ModelSettings() {
 
       <Show when={choice() === "codex"}>
         <CodexConnect />
+      </Show>
       </Show>
 
       <button
@@ -174,7 +182,7 @@ export function ModelSettings() {
 
 // ── ChatGPT / Codex: Hermes' real device-code flow ───────────────────────────
 
-function CodexConnect() {
+export function CodexConnect(props: { hideConnected?: boolean }) {
   // What this machine already has decides what we even offer.
   const [have, { refetch: recheck }] = createResource(() => api.codexStatus());
   const [status, setStatus] = createSignal<{
@@ -204,6 +212,9 @@ function CodexConnect() {
 
   const finish = async () => {
     await actions.refreshModel();
+    // The gateway must reload to see the new credentials — a sign-in the
+    // agents can't use yet isn't a sign-in.
+    void actions.restartAgentRuntime();
     setModels((await api.codexModels().catch(() => [])) ?? []);
     setStatus({ stage: "done" });
   };
@@ -270,30 +281,16 @@ function CodexConnect() {
     <div class="flex flex-col gap-3 rounded-lg border border-v2-border-border-muted bg-v2-background-bg-layer-01 p-4">
       {/* 0. Codex is already the live provider — say so; no sign-in button. */}
       <Show when={status().stage === "idle" && connectedNow()}>
-        <p class="text-[12px] font-medium text-v2-state-fg-success">
-          Connected — your agents run on your ChatGPT subscription
-          {state.model?.model ? ` (${state.model.model})` : ""}.
-        </p>
+        <Show when={!props.hideConnected}>
+          <p class="text-[12px] font-medium text-v2-state-fg-success">
+            Connected — your agents run on your ChatGPT subscription
+            {state.model?.model ? ` (${state.model.model})` : ""}.
+          </p>
+        </Show>
         <Show when={models().length}>
-          <p class="text-[11px] text-v2-text-text-muted">Switch the model they think with:</p>
-          <div class="flex flex-wrap gap-1.5">
-            <For each={models()}>
-              {(m) => (
-                <button
-                  type="button"
-                  onClick={() => void pickModel(m)}
-                  class="rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] transition-colors"
-                  classList={{
-                    "border-v2-border-border-focus bg-v2-overlay-simple-overlay-pressed text-v2-text-text-base":
-                      state.model?.model === m,
-                    "border-v2-border-border-muted text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover":
-                      state.model?.model !== m,
-                  }}
-                >
-                  {m}
-                </button>
-              )}
-            </For>
+          <div class="flex flex-col gap-1">
+            <span class="text-[11px] text-v2-text-text-muted">Model</span>
+            <ModelDropdown value={state.model?.model ?? ""} models={models()} onChange={(m) => void pickModel(m)} />
           </div>
         </Show>
         <button
@@ -394,27 +391,9 @@ function CodexConnect() {
           Connected. Your agents run on your ChatGPT subscription.
         </p>
         <Show when={models().length}>
-          <p class="text-[11px] text-v2-text-text-muted">
-            Pick the model they think with:
-          </p>
-          <div class="flex flex-wrap gap-1.5">
-            <For each={models()}>
-              {(m) => (
-                <button
-                  type="button"
-                  onClick={() => void pickModel(m)}
-                  class="rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] transition-colors"
-                  classList={{
-                    "border-v2-border-border-focus bg-v2-overlay-simple-overlay-pressed text-v2-text-text-base":
-                      state.model?.model === m,
-                    "border-v2-border-border-muted text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover":
-                      state.model?.model !== m,
-                  }}
-                >
-                  {m}
-                </button>
-              )}
-            </For>
+          <div class="flex flex-col gap-1">
+            <span class="text-[11px] text-v2-text-text-muted">Model</span>
+            <ModelDropdown value={state.model?.model ?? ""} models={models()} onChange={(m) => void pickModel(m)} />
           </div>
         </Show>
       </Show>
@@ -474,6 +453,7 @@ function KeyConnect() {
         ...(apiKey().trim() ? { api_key: apiKey().trim() } : {}),
       });
       setApiKey("");
+      void actions.restartAgentRuntime();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {

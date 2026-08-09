@@ -54,8 +54,14 @@ export interface OrgDocument {
   id: string;
   agent_profile_id?: string | null;
   title: string;
+  /** doc | spec | process | roadmap | report. A `report` is an archived
+   *  dispatch outcome: kept so nothing is lost to truncation, but never
+   *  injected into a prompt and never drawn on the knowledge graph. */
   kind: string;
   content: string;
+  /** Who last wrote it — "user", or the agent's name for anything an agent
+   *  filed. The only attribution a report carries. */
+  updated_by?: string;
   updated_at: string;
 }
 
@@ -151,7 +157,9 @@ export interface RealtimeEvent {
     | "tool_call.updated"
     | "task.updated"
     | "brief.created"
-    | "brief.updated";
+    | "brief.updated"
+    | "project.created"
+    | "project.updated";
   conversation_id?: string;
   data?: any;
 }
@@ -188,6 +196,8 @@ export interface Task {
   from_conversation_id: string;
   to_conversation_id: string;
   depth: number;
+  /** The project this task belongs to, when a lead dispatched it for one. */
+  project_id?: string;
   created_at: string;
   answered_at?: string;
 }
@@ -334,6 +344,73 @@ export interface Brief {
   answer?: string;
   answered_at?: string;
   created_at: string;
+}
+
+/** A project's lifecycle, driving the status tag's color. */
+export type ProjectStatus = "active" | "planning" | "paused" | "done";
+
+/** A phase's state, driving its bar color on the roadmap. */
+export type PhaseState = "done" | "active" | "queued" | "blocked";
+
+/** One phase of a project — a bar on the roadmap timeline. */
+export interface ProjectPhase {
+  id: string;
+  name: string;
+  ownerId: string | null;
+  /** ISO dates (yyyy-mm-dd), inclusive. */
+  start: string;
+  end: string;
+  state: PhaseState;
+}
+
+/**
+ * A project groups agents into a team with an objective, a lead, and a due
+ * date. Frontend-only for now — seeded and edited client-side; the backend
+ * model and persistence land when the UI is wired.
+ */
+export interface Project {
+  id: string;
+  name: string;
+  status: ProjectStatus;
+  objective: string;
+  leadId: string | null;
+  /** ISO date (yyyy-mm-dd) or null when open-ended. */
+  due: string | null;
+  /** Agent ids on the team. Ignored when allAgents is set. */
+  team: string[];
+  /** The default project: every agent, always — the whole organization. */
+  allAgents?: boolean;
+  /** 0–100, for the card's progress bar. */
+  progress: number;
+  /** The roadmap's bars. A project without phases draws as a single bar. */
+  phases?: ProjectPhase[];
+}
+
+/** A project as core-api returns it (GET/POST/PATCH /projects). The store maps
+ *  it onto the richer client `Project`; phases/progress stay client-side until
+ *  the roadmap backend lands (Phase B). */
+export interface ApiProject {
+  id: string;
+  name: string;
+  objective: string;
+  status: string;
+  priority: string;
+  lead_id: string | null;
+  team: string[];
+  phases: ApiPhase[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** A roadmap phase as core-api returns it (embedded on the project). The lead
+ *  owns these via the ROADMAP block. */
+export interface ApiPhase {
+  id: string;
+  name: string;
+  owner_id: string | null;
+  start: string;
+  end: string;
+  state: string;
 }
 
 /** The agent runtime, as onboarding sees it (GET /api/v1/runtime/status). */

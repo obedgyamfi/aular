@@ -1,7 +1,5 @@
 import { createStore } from "solid-js/store";
 
-import type { AvatarStyleId } from "./avatar";
-
 /**
  * Local, per-device preferences — how the shell looks and behaves on *this*
  * machine. Distinct from the account, which owns the organization: your agents,
@@ -19,9 +17,25 @@ export interface Profile {
   avatarDataUrl: string;
 }
 
+/** Which DiceBear style draws agent portraits — Settings ▸ Appearance. */
+export type AvatarStyle =
+  | "lorelei"
+  | "adventurer"
+  | "notionists"
+  | "personas"
+  | "micah"
+  | "bigSmile"
+  | "avataaars"
+  | "openPeeps"
+  | "toonHead"
+  | "pixelArt"
+  | "bottts";
+
 interface Settings {
   profile: Profile;
-  avatarStyle: AvatarStyleId;
+  avatarStyle: AvatarStyle;
+  /** The whole app takes the colour of whichever agent you're talking to. */
+  dynamicAccent: boolean;
   notifications: boolean;
   reduceMotion: boolean;
   mutedAgents: string[];
@@ -31,7 +45,8 @@ const KEY = "aular-settings";
 
 const defaults: Settings = {
   profile: { name: "", email: "", bio: "", avatarDataUrl: "" },
-  avatarStyle: "notionists",
+  avatarStyle: "lorelei",
+  dynamicAccent: false,
   notifications: false,
   reduceMotion: false,
   mutedAgents: [],
@@ -77,7 +92,11 @@ export const settingsActions = {
     setSettings("profile", patch);
     persist();
   },
-  setAvatarStyle(avatarStyle: AvatarStyleId) {
+  setDynamicAccent(on: boolean) {
+    setSettings("dynamicAccent", on);
+    persist();
+  },
+  setAvatarStyle(avatarStyle: AvatarStyle) {
     setSettings("avatarStyle", avatarStyle);
     persist();
   },

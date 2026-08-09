@@ -7,3 +7,7 @@ apps/desktop/src-tauri/gen/
 .DS_Store
 .env
 .env.local
+.env.*.local
+
+# WebKitGTK preview harness: persisted login/cache, per-machine.
+apps/desktop/.wk-preview-profile/

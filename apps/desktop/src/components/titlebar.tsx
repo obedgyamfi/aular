@@ -1,51 +1,88 @@
 import { Show } from "solid-js";
+import type { JSX } from "solid-js";
 import { Icon } from "@opencode-ai/ui/icon";
+import BookOpen from "lucide-solid/icons/book-open";
+import CalendarDays from "lucide-solid/icons/calendar-days";
+import ClipboardList from "lucide-solid/icons/clipboard-list";
+import GanttChart from "lucide-solid/icons/chart-no-axes-gantt";
+import Network from "lucide-solid/icons/network";
+import SquareKanban from "lucide-solid/icons/square-kanban";
+import Users from "lucide-solid/icons/users";
 
-import { AccountMenu } from "~/components/account-menu";
-import { AppMenu } from "~/components/app-menu";
-import { Logo } from "~/components/logo";
-import { Notifications } from "~/components/notifications";
+import { Avatar } from "~/components/avatar";
 import { WindowControls } from "~/components/window-controls";
-import { actions, canGoBack, canGoForward, state } from "~/lib/store";
-import { toggleSidebar } from "~/lib/window";
+import { actions, activeAgent, atHome, canGoBack, canGoForward, state } from "~/lib/store";
 
 /**
- * The title bar, laid out like opencode's: the ☰ app menu, the sidebar toggle,
- * search, and back/forward on the left; notifications, the account, and the
- * window controls hard right. The empty middle is the drag region — grab
- * anywhere and the window moves.
+ * The title bar: 38px, rail-coloured, working controls left, utility icons
+ * right, and the empty runs are drag regions.
  *
- * Back and forward walk the view history — the registers and agents you've been
- * through — the same way a browser does.
+ * No bottom border. Discord doesn't rule a line across the whole window here —
+ * the titlebar shares the rail's colour and the columns below carve their own
+ * edges out of it, so the only horizontal lines you see are the ones that
+ * belong to a column. A full-width rule cut straight through that and made the
+ * seams disagree.
+ *
+ * The centre names *where you are*, the way Discord's does ("Direct Messages").
+ * It used to hold the brand mark, which is the one thing on screen that never
+ * changes and so tells you nothing — and the app already says "Aular" on the
+ * rail, in the window title, and on the icon in your dock.
  */
-const HEIGHT = 36;
+const HEIGHT = 38;
 const isMac = navigator.userAgent.includes("Mac");
 
-export function TitleBar(props: { engine?: string; onSearch?: () => void }) {
+/** What the centre says, per surface. Chat names the conversation. */
+function context(): { label: string; icon: JSX.Element } {
+  const sz = { size: 13, "stroke-width": 2 } as const;
+  switch (state.register) {
+    case "org":
+      return atHome()
+        ? { label: "Org chart", icon: <Network {...sz} /> }
+        : { label: "Team", icon: <Users {...sz} /> };
+    case "knowledge":
+      return { label: "Knowledge graph", icon: <BookOpen {...sz} /> };
+    case "work":
+      return {
+        label: atHome() ? "Mission control" : "Work board",
+        icon: <SquareKanban {...sz} />,
+      };
+    case "roadmap":
+      return { label: "Roadmap", icon: <GanttChart {...sz} /> };
+    case "calendar":
+      return { label: "Schedules", icon: <CalendarDays {...sz} /> };
+    case "overview":
+      return { label: "Overview", icon: <ClipboardList {...sz} /> };
+    default: {
+      const a = activeAgent();
+      if (!a) return { label: "Agents", icon: <Users {...sz} /> };
+      // The system agent is named and pictured like any other teammate here —
+      // it was the only one reduced to a hash and a lowercased name.
+      return a.role === "system"
+        ? { label: a.name, icon: <Avatar name={a.name} size={15} circle /> }
+        : { label: a.name, icon: <Users {...sz} /> };
+    }
+  }
+}
+
+export function TitleBar(props: { engine?: string }) {
   return (
     <div
       data-slot="titlebar-v2"
       data-tauri-drag-region
-      class="relative z-20 flex shrink-0 items-stretch bg-v2-background-bg-deep"
+      class="relative z-20 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center bg-[var(--rail)]"
       style={{ height: `${HEIGHT}px`, "padding-left": isMac ? "84px" : "0" }}
     >
-      {/* Left: brand, then menu + navigation */}
-      <div class="flex shrink-0 items-center gap-0.5 px-1.5">
-        <div data-tauri-drag-region class="flex items-center gap-2 pl-1.5 pr-2.5">
-          <Logo size={14} />
-          <span class="text-[12px] font-medium tracking-[0.12em] text-v2-text-text-base">
-            AULAR
-          </span>
-        </div>
-        <AppMenu />
-        <ToolbarButton label="Toggle sidebar" icon="sidebar" onClick={toggleSidebar} />
-        <ToolbarButton
-          label="Search — ⌘K"
-          icon="magnifying-glass"
-          disabled={!props.onSearch}
-          onClick={props.onSearch}
-        />
-        <span class="mx-1 h-4 w-px bg-v2-border-border-muted" />
+      {/* Every column carries data-tauri-drag-region of its own. Tauri's docs
+          are explicit that the attribute "will only work on the element to
+          which it is directly applied" — putting it only on this grid meant the
+          three child columns covered the entire bar and the window could not be
+          dragged anywhere. Buttons stay clickable precisely because they do NOT
+          carry it. */}
+      {/* Left: the working controls, compact. */}
+      <div data-tauri-drag-region class="flex items-center gap-0.5 pl-1.5">
+        {/* No search button: search is the pill at the top of the sidebar now,
+            beside the agents and channels it actually searches. ⌘K still works
+            from anywhere. */}
         <ToolbarButton
           label="Back"
           icon="arrow-left"
@@ -60,31 +97,37 @@ export function TitleBar(props: { engine?: string; onSearch?: () => void }) {
         />
       </div>
 
-      {/* The drag region: everything not a control. */}
-      <div data-tauri-drag-region class="flex flex-1 items-center justify-end gap-3 px-3">
-        <Show when={props.engine}>
-          <span class="font-mono text-[11px] text-v2-text-text-faint">{props.engine}</span>
+      {/* Center: where you are. */}
+      <div
+        data-tauri-drag-region
+        class="flex min-w-0 items-center justify-center gap-1.5 px-2"
+      >
+        <Show when={state.user}>
+          <span class="flex-none text-[var(--muted)]">{context().icon}</span>
+          <span class="min-w-0 truncate text-[12.5px] font-semibold text-[var(--text)]">
+            {context().label}
+          </span>
         </Show>
       </div>
 
-      {/* You, beside the window controls — signed-in surfaces only. */}
-      <Show when={state.user}>
-        <div class="flex shrink-0 items-center gap-0.5 pr-1.5">
-          <Notifications />
-          <AccountMenu />
-        </div>
-      </Show>
-
-      <Show when={!isMac}>
-        <WindowControls />
-      </Show>
+      {/* Right: just the window. The theme switch moved to Settings ▸
+          Appearance, and your account and notifications live in the sidebar's
+          user panel — one home each. */}
+      <div
+        data-tauri-drag-region
+        class="flex items-stretch justify-end self-stretch"
+      >
+        <Show when={!isMac}>
+          <WindowControls />
+        </Show>
+      </div>
     </div>
   );
 }
 
 function ToolbarButton(props: {
   label: string;
-  icon: "sidebar" | "magnifying-glass" | "arrow-left" | "arrow-right";
+  icon: "arrow-left" | "arrow-right";
   disabled?: boolean;
   onClick?: () => void;
 }) {
@@ -94,7 +137,7 @@ function ToolbarButton(props: {
       aria-label={props.label}
       disabled={props.disabled}
       onClick={props.onClick}
-      class="flex size-7 shrink-0 items-center justify-center rounded text-v2-icon-icon-base transition-colors hover:bg-v2-overlay-simple-overlay-hover disabled:text-v2-icon-icon-muted disabled:opacity-40 disabled:hover:bg-transparent"
+      class="flex size-7 shrink-0 items-center justify-center rounded-[var(--r2)] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)] disabled:opacity-40 disabled:hover:bg-transparent"
     >
       <Icon name={props.icon} size="small" />
     </button>

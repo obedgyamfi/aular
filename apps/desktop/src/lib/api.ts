@@ -2,6 +2,7 @@ import type {
   Agent,
   AgentTemplate,
   AnalyticsDaily,
+  ApiProject,
   AuthUser,
   Conversation,
   ConversationContext,
@@ -33,10 +34,44 @@ import type {
  *
  * Auth is a session token. The account is real even though execution is local:
  * the org (who your agents are, what they know) belongs to the account, not the
- * machine. When aular-cloud lands, only BASE changes — the contract is the same.
+ * machine. Which server holds that account is a runtime choice — see apiBase.
  */
-const BASE = import.meta.env.VITE_AULAR_API ?? "http://127.0.0.1:8080";
 const TOKEN_KEY = "aular-session";
+const BASE_KEY = "aular-api-base";
+
+/**
+ * Where the backend lives, resolved fresh on every call.
+ *
+ * `import.meta.env` is substituted at build time, so reading it into a module
+ * constant freezes the host into the bundle: a shipped app could only ever talk
+ * to whatever server the build machine happened to name. That is only a default
+ * now, and a stored value wins, so one artifact serves a local backend, a
+ * self-hosted one, and the cloud.
+ */
+export function apiBase(): string {
+  const stored = localStorage.getItem(BASE_KEY);
+  return normalizeBase(stored || defaultBase());
+}
+
+export function defaultBase(): string {
+  return import.meta.env.VITE_AULAR_API ?? "http://127.0.0.1:8080";
+}
+
+/** Passing null restores the built-in default. */
+export function setApiBase(url: string | null) {
+  const next = url?.trim() ? normalizeBase(url) : null;
+  // A session token is issued by one server and meaningless to another. Keeping
+  // it across a move would send the old server's token to the new one and read
+  // as "signed out" in the most confusing way possible.
+  if ((next ?? normalizeBase(defaultBase())) !== apiBase()) setSessionToken(null);
+  if (next) localStorage.setItem(BASE_KEY, next);
+  else localStorage.removeItem(BASE_KEY);
+}
+
+/** Trailing slashes would produce `//api/v1` once joined with a path. */
+function normalizeBase(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
 
 export function sessionToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -50,7 +85,7 @@ class Unauthorized extends Error {}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const token = sessionToken();
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -77,6 +112,11 @@ const v1 = <T>(path: string, init?: RequestInit) => call<T>(`/api/v1${path}`, in
 
 export const api = {
   isUnauthorized: (e: unknown) => e instanceof Unauthorized,
+
+  // ── which server ──────────────────────────────────────────────────────
+  apiBase,
+  setApiBase,
+  defaultBase,
 
   // ── account ───────────────────────────────────────────────────────────
   health: () => call<Health>("/healthz"),
@@ -128,6 +168,19 @@ export const api = {
 
   listTemplates: () => v1<AgentTemplate[]>("/agent-profile-templates"),
 
+  // ── projects (AULAR creates them via the PROJECT block + names a lead) ──
+  listProjects: () => v1<ApiProject[]>("/projects"),
+  createProject: (input: {
+    name: string;
+    objective?: string;
+    lead_id?: string | null;
+    team?: string[];
+  }) => v1<ApiProject>("/projects", { method: "POST", body: JSON.stringify(input) }),
+  updateProject: (
+    id: string,
+    patch: Partial<{ name: string; objective: string; status: string; priority: string; lead_id: string | null; team: string[] }>,
+  ) => v1<ApiProject>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+
   // ── conversations ─────────────────────────────────────────────────────
   listConversations: (agentId?: string) =>
     v1<Conversation[] | null>(
@@ -138,6 +191,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ agent_profile_id: agentId, title }),
     }),
+  renameConversation: (id: string, title: string) =>
+    v1<Conversation>(`/conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+  deleteConversation: (id: string) =>
+    v1<void>(`/conversations/${id}`, { method: "DELETE" }),
   listMessages: (conversationId: string, limit = 60) =>
     v1<Message[] | null>(`/conversations/${conversationId}/messages?limit=${limit}`),
   sendMessage: (
@@ -168,7 +228,7 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     const token = sessionToken();
-    const res = await fetch(`${BASE}/api/v1/media`, {
+    const res = await fetch(`${apiBase()}/api/v1/media`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -187,6 +247,24 @@ export const api = {
   }) =>
     v1<OrgDocument>("/documents/", { method: "POST", body: JSON.stringify(input) }),
   deleteDocument: (id: string) => v1<void>(`/documents/${id}`, { method: "DELETE" }),
+
+  /**
+   * Who else reads a document.
+   *
+   * `agent_profile_id` on the document says who it was WRITTEN for; these are
+   * the readers layered on top, so one policy can serve four agents without
+   * being copied per agent or forced org-wide. Fetched for the whole org in one
+   * call — the graph draws every edge at once, and per-document would be a
+   * request per node.
+   */
+  listDocumentLinks: () => v1<Record<string, string[]> | null>("/documents/links"),
+  linkDocument: (docId: string, agentId: string) =>
+    v1<void>(`/documents/${docId}/links`, {
+      method: "POST",
+      body: JSON.stringify({ agent_profile_id: agentId }),
+    }),
+  unlinkDocument: (docId: string, agentId: string) =>
+    v1<void>(`/documents/${docId}/links/${agentId}`, { method: "DELETE" }),
 
   listToolDefinitions: () => v1<ToolDefinition[]>("/tool-definitions"),
   listToolCalls: (conversationId: string, limit = 100) =>
@@ -284,7 +362,7 @@ export function openRealtime(onEvent: (e: import("./types").RealtimeEvent) => vo
 
   const connect = () => {
     if (closed) return;
-    const url = BASE.replace(/^http/, "ws") + `/ws?session=${encodeURIComponent(token)}`;
+    const url = apiBase().replace(/^http/, "ws") + `/ws?session=${encodeURIComponent(token)}`;
     ws = new WebSocket(url);
     ws.onmessage = (ev) => {
       try {

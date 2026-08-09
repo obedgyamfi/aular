@@ -9,9 +9,16 @@ import DOMPurify from "dompurify";
  */
 marked.setOptions({ breaks: true, gfm: true });
 
-export function Markdown(props: { content: string }) {
+export function Markdown(props: { content: string; sans?: boolean }) {
   const html = createMemo(() =>
     DOMPurify.sanitize(marked.parse(props.content ?? "", { async: false }) as string),
   );
-  return <div class="aular-markdown" data-selectable innerHTML={html()} />;
+  return (
+    <div
+      class="aular-markdown"
+      classList={{ "aular-markdown-sans": props.sans }}
+      data-selectable
+      innerHTML={html()}
+    />
+  );
 }

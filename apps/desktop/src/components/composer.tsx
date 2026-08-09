@@ -1,23 +1,26 @@
 import {
   createEffect,
+  createMemo,
   createResource,
   createSignal,
   For,
   onCleanup,
   Show,
 } from "solid-js";
-import {
-  ArrowUp,
-  Maximize2,
-  Minimize2,
-  Paperclip,
-  Slash,
-  Square,
-  X,
-} from "lucide-solid";
+import ArrowUp from "lucide-solid/icons/arrow-up";
+import FolderClock from "lucide-solid/icons/folder-clock";
+import Gauge from "lucide-solid/icons/gauge";
+import Paperclip from "lucide-solid/icons/paperclip";
+import Plus from "lucide-solid/icons/plus";
+import Slash from "lucide-solid/icons/slash";
+import Sparkles from "lucide-solid/icons/sparkles";
+import Square from "lucide-solid/icons/square";
+import X from "lucide-solid/icons/x";
+import Zap from "lucide-solid/icons/zap";
 
+import { CommandPane, type PaneItem } from "~/components/command-pane";
 import { api } from "~/lib/api";
-import { SLASH_COMMANDS, type SlashCommand } from "~/lib/slash-commands";
+import { SLASH_COMMANDS } from "~/lib/slash-commands";
 import {
   actions,
   activeAgent,
@@ -25,56 +28,129 @@ import {
   activeWorking,
   state,
 } from "~/lib/store";
+import { onComposerFocus } from "~/lib/window";
 import type { ConversationContext } from "~/lib/types";
 
 /**
- * The composer — one deck, not a textarea with controls scattered around it.
+ * The composer — Discord-shaped, Hermes-powered.
  *
- * Everything about the turn you're composing lives inside a single bordered
- * surface: what you're replying to and what you've attached ride at the top,
- * the editor in the middle, and the action bar sits INSIDE the bottom edge —
- * attach, the slash hint, the model you're spending, how full the context is,
- * and the send button (which becomes Stop while the agent thinks). Nothing
- * floats; the deck is the object.
+ * One rounded slab on a single row, Discord's shape: a `+` menu on the left
+ * (attach, slash commands, sessions), the input in the middle, and on the right
+ * the controls that spend tokens — reasoning effort, the model, the context
+ * gauge, and send. The flanks are pinned to the first line, so a long draft
+ * grows the box downward past them instead of pushing them around.
+ * Every control routes a REAL Hermes command (`/reasoning`, `/fast`, `/model`,
+ * `/status`, `/new`, `/sessions`), which the gateway short-circuits for free,
+ * so nothing here is cosmetic.
  */
-export function Composer() {
+export function Composer(props: {
+  /**
+   * A chance to claim a plain-text send before it becomes an agent turn —
+   * the org rail parses quick org edits ("hire a QA engineer") into draft
+   * proposals here. Return true to keep the text out of the conversation;
+   * slash commands and sends with attachments are never offered.
+   */
+  intercept?: (text: string) => boolean;
+}) {
   const [text, setText] = createSignal("");
   const [ctx, setCtx] = createSignal<ConversationContext | null>(null);
   const [refresh, setRefresh] = createSignal(0);
-  const [expanded, setExpanded] = createSignal(false);
 
   let area: HTMLTextAreaElement | undefined;
   let fileInput: HTMLInputElement | undefined;
 
   const enabled = () => !!activeAgent();
 
-  // ── the slash palette ─────────────────────────────────────────────────────
+  // The conversation's opening CTA hands the cursor over to us.
+  onCleanup(onComposerFocus(() => area?.focus()));
+
+  // ── the command pane: `/` commands and `@` mentions ───────────────────────
   const [dismissed, setDismissed] = createSignal(false);
   const [selected, setSelected] = createSignal(0);
+  const [caret, setCaret] = createSignal(0);
 
-  const query = () => {
-    const t = text();
-    return t.startsWith("/") && !/\s/.test(t) ? t.slice(1).toLowerCase() : null;
-  };
-  const matches = (): SlashCommand[] => {
-    const q = query();
-    if (q === null || dismissed()) return [];
-    return SLASH_COMMANDS.filter((c) => c.cmd.slice(1).startsWith(q));
-  };
+  /** What the caret is sitting inside, if it's a completable token. */
+  const trigger = createMemo(() => triggerAt(text(), caret()));
+
+  const items = createMemo<PaneItem[]>(() => {
+    const t = trigger();
+    if (!t || dismissed()) return [];
+    if (t.kind === "slash") {
+      return SLASH_COMMANDS.filter((c) => c.cmd.slice(1).startsWith(t.q)).map((c) => ({
+        id: c.cmd,
+        label: c.cmd,
+        args: c.args,
+        desc: c.desc,
+      }));
+    }
+    // Mentions: teammates you can pull into this turn, the system agent last —
+    // you talk to AULAR in its own channel, not by summoning it here. Prefix
+    // matches rank above mid-word ones, then alphabetical, so the list is
+    // predictable instead of following the store's arrival order.
+    return state.agents
+      .filter((a) => a.name.toLowerCase().includes(t.q))
+      .sort((a, b) => {
+        const sys = Number(a.role === "system") - Number(b.role === "system");
+        if (sys !== 0) return sys;
+        const pa = Number(!a.name.toLowerCase().startsWith(t.q));
+        const pb = Number(!b.name.toLowerCase().startsWith(t.q));
+        if (pa !== pb) return pa - pb;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 8)
+      .map((a) => ({ id: a.id, label: `@${a.name}`, desc: prettyRole(a.role), avatar: a.name }));
+  });
+
+  // A fresh token restarts the selection at the top.
   createEffect(() => {
-    if (!text().startsWith("/")) setDismissed(false);
-    query();
+    const t = trigger();
+    if (!t) setDismissed(false);
     setSelected(0);
   });
 
-  const runCommand = (c: SlashCommand) => {
-    if (c.needsArgs) {
-      setText(c.cmd + " ");
-      area?.focus();
+  /** Remember where the caret is so the pane knows which token to complete. */
+  const syncCaret = () => setCaret(area?.selectionStart ?? text().length);
+
+  const pick = (item: PaneItem) => {
+    const t = trigger();
+    if (!t) return;
+
+    if (t.kind === "mention") {
+      // Swap the half-typed handle for the full one and keep writing. Only add
+      // the trailing space when the text doesn't already continue with one —
+      // completing mid-sentence would otherwise leave "@Nova  please".
+      const rest = text().slice(caret());
+      const gap = /^\s/.test(rest) ? "" : " ";
+      const next = `${text().slice(0, t.from)}${item.label}${gap}${rest}`;
+      setText(next);
+      const pos = t.from + item.label.length + gap.length;
+      queueMicrotask(() => {
+        area?.focus();
+        area?.setSelectionRange(pos, pos);
+        setCaret(pos);
+      });
+      return;
+    }
+
+    const cmd = SLASH_COMMANDS.find((c) => c.cmd === item.id);
+    if (!cmd) return;
+    if (cmd.needsArgs) {
+      setText(cmd.cmd + " ");
+      queueMicrotask(() => {
+        area?.focus();
+        syncCaret();
+      });
       return;
     }
     setText("");
-    void actions.send(c.cmd);
+    void actions.send(cmd.cmd);
+    setRefresh((n) => n + 1);
+  };
+
+  /** Fire a gateway command directly (from a toolbar control, not typed). */
+  const fire = (cmd: string) => {
+    if (!enabled()) return;
+    void actions.send(cmd);
     setRefresh((n) => n + 1);
   };
 
@@ -102,12 +178,17 @@ export function Composer() {
 
   const grow = (el: HTMLTextAreaElement) => {
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, expanded() ? 420 : 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
   };
 
   const submit = () => {
     const t = text().trim();
     if ((!t && !state.attachment) || !enabled()) return;
+    if (t && !t.startsWith("/") && !state.attachment && props.intercept?.(t)) {
+      setText("");
+      if (area) area.style.height = "auto";
+      return;
+    }
     setText("");
     if (area) area.style.height = "auto";
     void actions.send(t);
@@ -115,7 +196,7 @@ export function Composer() {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const list = matches();
+    const list = items();
     if (list.length) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -127,15 +208,9 @@ export function Composer() {
         setSelected((s) => (s - 1 + list.length) % list.length);
         return;
       }
-      if (e.key === "Tab") {
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        setText(list[selected()]!.cmd + " ");
-        area?.focus();
-        return;
-      }
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        runCommand(list[selected()]!);
+        pick(list[selected()]!);
         return;
       }
       if (e.key === "Escape") {
@@ -153,59 +228,45 @@ export function Composer() {
   const hasDeckHeader = () => !!state.replyTo || !!state.attachment;
 
   return (
-    <div class="shrink-0 px-4 pb-4">
-      <div class="relative mx-auto w-full max-w-[820px]">
-        {/* The slash palette floats over the deck. */}
-        <Show when={matches().length}>
-          <div class="aular-pop absolute bottom-full left-0 z-30 mb-2 max-h-[280px] w-full max-w-[460px] overflow-y-auto rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
-            <For each={matches()}>
-              {(c, i) => (
-                <button
-                  type="button"
-                  onMouseEnter={() => setSelected(i())}
-                  onClick={() => runCommand(c)}
-                  class="flex w-full items-baseline gap-2 px-3 py-1.5 text-left transition-colors"
-                  classList={{
-                    "bg-v2-overlay-simple-overlay-pressed": i() === selected(),
-                  }}
-                >
-                  <span class="shrink-0 font-mono text-[12px] font-medium text-v2-text-text-accent">
-                    {c.cmd}
-                  </span>
-                  <Show when={c.args}>
-                    <span class="shrink-0 font-mono text-[10.5px] text-v2-text-text-faint">
-                      {c.args}
-                    </span>
-                  </Show>
-                  <span class="min-w-0 truncate text-[11px] text-v2-text-text-muted">
-                    {c.desc}
-                  </span>
-                </button>
-              )}
-            </For>
-            <div class="mt-1 border-t border-v2-border-border-muted px-3 pb-0.5 pt-1.5 text-[10px] text-v2-text-text-faint">
-              ↑↓ navigate · Tab complete · Enter run · gateway commands cost 0 tokens
-            </div>
-          </div>
+    // Full width, not a centered 760px column: in a channel the composer spans
+    // the conversation the way Slack's and Buzz's do. A centred capsule reads as
+    // a single-assistant chat app, which is the look we're moving away from.
+    <div class="shrink-0 px-4 pb-4 pt-1.5">
+      <div class="relative w-full">
+        {/* The command pane floats over the deck — `/` commands, `@` mentions. */}
+        <Show when={items().length}>
+          <CommandPane
+            title={trigger()?.kind === "mention" ? "Mention an agent" : "Gateway commands"}
+            items={items()}
+            selected={selected()}
+            hint={
+              trigger()?.kind === "mention"
+                ? "↑↓ navigate · Tab or Enter to insert · Esc to dismiss"
+                : "↑↓ navigate · Tab complete · Enter run · gateway commands cost 0 tokens"
+            }
+            onHover={setSelected}
+            onPick={pick}
+          />
         </Show>
 
-        {/* ── the deck ───────────────────────────────────────────────────── */}
-        <div
-          class="flex flex-col rounded-xl border border-v2-border-border-base bg-v2-background-bg-layer-01 transition-colors focus-within:border-v2-border-border-focus"
-          classList={{ "shadow-lg": expanded() }}
-        >
+        {/* ── the input — Discord's composer ─────────────────────────────────
+            A solid, BORDERLESS slab one step lighter than the conversation
+            (--element = #383a40 on dark), at the 8px workhorse radius. Discord
+            draws no outline and no focus ring here; the tone change alone
+            separates it from the timeline, which is why it reads as part of the
+            channel rather than a widget floating over it. */}
+        <div class="flex flex-col rounded-[var(--r2)] border border-[var(--line)] bg-[var(--element)]">
           {/* What this turn carries, before you've written it. */}
           <Show when={hasDeckHeader()}>
-            <div class="flex flex-wrap items-center gap-1.5 rounded-t-xl border-b border-v2-border-border-muted px-3 py-2">
+            <div class="flex flex-wrap items-center gap-1.5 px-3.5 pt-3">
               <Show when={state.replyTo}>
                 {(m) => (
-                  <span class="flex min-w-0 max-w-full items-center gap-1.5 rounded-md border-l-2 border-v2-border-border-focus bg-v2-background-bg-layer-02 py-1 pl-2 pr-1">
+                  <span class="flex min-w-0 max-w-full items-center gap-1.5 rounded-md border-l-2 border-[var(--accent)] bg-[var(--element)] py-1 pl-2 pr-1">
                     <span class="flex min-w-0 flex-col">
-                      <span class="text-[10px] font-medium text-v2-text-text-accent">
-                        Replying to{" "}
-                        {m().sender_type === "user" ? "yourself" : activeAgent()?.name}
+                      <span class="text-[10px] font-semibold text-[var(--accent-text)]">
+                        Replying to {m().sender_type === "user" ? "yourself" : activeAgent()?.name}
                       </span>
-                      <span class="max-w-[420px] truncate text-[11px] text-v2-text-text-muted">
+                      <span class="max-w-[420px] truncate text-[11px] text-[var(--muted)]">
                         {m().content.replace(/\s+/g, " ").trim() || "attachment"}
                       </span>
                     </span>
@@ -213,7 +274,7 @@ export function Composer() {
                       type="button"
                       aria-label="Cancel reply"
                       onClick={() => actions.setReplyTo(null)}
-                      class="flex size-5 shrink-0 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base"
+                      class="grid size-5 shrink-0 place-items-center rounded text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
                     >
                       <X size={12} />
                     </button>
@@ -223,16 +284,16 @@ export function Composer() {
 
               <Show when={state.attachment}>
                 {(a) => (
-                  <span class="flex items-center gap-1.5 rounded-md border border-v2-border-border-muted bg-v2-background-bg-layer-02 py-1 pl-2 pr-1">
-                    <Paperclip size={12} class="text-v2-icon-icon-muted" />
-                    <span class="max-w-[240px] truncate text-[11.5px] text-v2-text-text-base">
+                  <span class="flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--element)] py-1 pl-2 pr-1">
+                    <Paperclip size={12} class="text-[var(--muted)]" />
+                    <span class="max-w-[240px] truncate text-[11.5px] text-[var(--text)]">
                       {a().name ?? "attachment"}
                     </span>
                     <button
                       type="button"
                       aria-label="Remove attachment"
                       onClick={() => actions.clearAttachment()}
-                      class="flex size-5 items-center justify-center rounded text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base"
+                      class="grid size-5 place-items-center rounded text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
                     >
                       <X size={12} />
                     </button>
@@ -242,28 +303,13 @@ export function Composer() {
             </div>
           </Show>
 
-          {/* The editor. */}
-          <textarea
-            ref={area}
-            rows={expanded() ? 8 : 2}
-            value={text()}
-            disabled={!enabled()}
-            onInput={(e) => {
-              setText(e.currentTarget.value);
-              grow(e.currentTarget);
-            }}
-            onKeyDown={onKeyDown}
-            placeholder={
-              enabled()
-                ? `Message ${activeAgent()?.name ?? ""} — / for commands`
-                : "Select an agent first"
-            }
-            class="w-full resize-none bg-transparent px-3.5 pb-1.5 pt-3 text-[13.5px] leading-relaxed text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint disabled:opacity-60"
-            classList={{ "max-h-[420px]": expanded(), "max-h-[200px]": !expanded() }}
-          />
-
-          {/* The action bar — inside the deck, under the words. */}
-          <div class="flex items-center gap-1 px-2 pb-2 pt-0.5">
+          {/* One row, Discord's shape: the + and the controls flank the input
+              rather than sitting on a second deck below it. Both are pinned to
+              the TOP of the row (items-start) and given the height of a single
+              line, so they stay level with the first line while the box grows
+              downward under them. */}
+          <div class="flex items-start gap-1">
+          <div class="flex h-[42px] shrink-0 items-center pl-2">
             <input
               ref={fileInput}
               type="file"
@@ -274,42 +320,51 @@ export function Composer() {
                 e.currentTarget.value = "";
               }}
             />
-            <DeckButton
-              label="Attach a file"
+            <PlusMenu
               disabled={!enabled()}
-              onClick={() => fileInput?.click()}
-            >
-              <Paperclip size={15} />
-            </DeckButton>
-            <DeckButton
-              label="Slash commands — free, they never reach the model"
-              disabled={!enabled()}
-              onClick={() => {
+              onAttach={() => fileInput?.click()}
+              onSlash={() => {
                 setText("/");
                 setDismissed(false);
                 area?.focus();
               }}
-            >
-              <Slash size={15} />
-            </DeckButton>
+              onFire={fire}
+            />
+          </div>
 
-            <ModelPill />
-            <ContextMeter ctx={ctx()} draft={text()} />
+          <textarea
+            ref={area}
+            rows={1}
+            value={text()}
+            disabled={!enabled()}
+            onInput={(e) => {
+              setText(e.currentTarget.value);
+              grow(e.currentTarget);
+              syncCaret();
+            }}
+            onKeyDown={onKeyDown}
+            // The pane completes whatever token the caret is in, so it has to
+            // follow arrow keys and clicks, not just typing.
+            onKeyUp={syncCaret}
+            onClick={syncCaret}
+            onSelect={syncCaret}
+            // Discord's phrasing, minus the channel case: "Message @name",
+            // because everyone here is someone you address — the system agent
+            // was the last place the app still called a teammate a room.
+            placeholder={
+              enabled()
+                ? `Message @${activeAgent()?.name ?? ""}`
+                : "Select an agent first"
+            }
+            class="max-h-[260px] min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-[11px] text-[14px] leading-5 text-[var(--text)] outline-none placeholder:text-[var(--faint)] disabled:opacity-60"
+          />
 
-            <div class="flex-1" />
+          <div class="flex h-[42px] shrink-0 items-center gap-1 pr-2">
+            <ContextGauge ctx={ctx()} draft={text()} onStatus={() => fire("/status")} />
+            <ReasoningPill disabled={!enabled()} onFire={fire} />
+            <ModelPill onFire={fire} />
 
-            <DeckButton
-              label={expanded() ? "Shrink the editor" : "Expand the editor"}
-              onClick={() => {
-                setExpanded((e) => !e);
-                queueMicrotask(() => area && grow(area));
-              }}
-            >
-              {expanded() ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            </DeckButton>
-
-            {/* Send — and while a turn is in flight, Stop. Same seat, so the
-                one control you reach for never moves. */}
+            {/* Send — becomes Stop while a turn is in flight. Same seat, always. */}
             <Show
               when={!activeWorking()}
               fallback={
@@ -318,9 +373,9 @@ export function Composer() {
                   onClick={() => void actions.send("/stop")}
                   aria-label="Stop the agent"
                   title="Stop (/stop)"
-                  class="ml-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-v2-state-bg-danger text-v2-state-fg-danger transition-opacity hover:opacity-90"
+                  class="ml-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-[var(--red-soft)] text-[var(--red)] transition-opacity hover:opacity-90"
                 >
-                  <Square size={13} fill="currentColor" />
+                  <Square size={12} fill="currentColor" />
                 </button>
               }
             >
@@ -330,50 +385,162 @@ export function Composer() {
                 disabled={(!text().trim() && !state.attachment) || !enabled()}
                 aria-label="Send"
                 title="Send — Enter"
-                class="ml-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-v2-background-bg-accent text-v2-text-text-inverse transition-opacity hover:opacity-90 disabled:bg-v2-background-bg-layer-03 disabled:text-v2-text-text-faint"
+                class="ml-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-[var(--accent)] bg-[image:var(--accent-grad)] text-[var(--on-accent)] transition-colors hover:brightness-110 disabled:bg-[var(--element)] disabled:bg-none disabled:text-[var(--faint)]"
               >
                 <ArrowUp size={16} stroke-width={2.4} />
               </button>
             </Show>
           </div>
+          </div>
         </div>
-
-        <p class="pt-1 text-center text-[10px] text-v2-text-text-faint">
-          Enter to send · Shift+Enter for a new line
-        </p>
       </div>
     </div>
   );
 }
 
-/** A small square control inside the deck's action bar. */
-function DeckButton(props: {
-  label: string;
+// ── the + menu ───────────────────────────────────────────────────────────────
+
+function PlusMenu(props: {
   disabled?: boolean;
-  onClick: () => void;
-  children: any;
+  onAttach: () => void;
+  onSlash: () => void;
+  onFire: (cmd: string) => void;
 }) {
+  const [open, setOpen] = createSignal(false);
+  let root: HTMLDivElement | undefined;
+  const onDown = (e: PointerEvent) => {
+    if (!root?.contains(e.target as Node)) setOpen(false);
+  };
+  document.addEventListener("pointerdown", onDown);
+  onCleanup(() => document.removeEventListener("pointerdown", onDown));
+
+  const act = (fn: () => void) => {
+    setOpen(false);
+    fn();
+  };
+
+  return (
+    <div ref={root} class="relative">
+      <button
+        type="button"
+        disabled={props.disabled}
+        aria-label="Add"
+        onClick={() => setOpen((o) => !o)}
+        class="grid size-8 place-items-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)] disabled:opacity-40"
+        classList={{ "bg-[var(--element)] text-[var(--text)]": open() }}
+      >
+        <Plus size={17} stroke-width={2} />
+      </button>
+
+      <Show when={open()}>
+        <div class="aular-pop absolute bottom-full left-0 z-40 mb-2 w-[230px] rounded-[var(--r3)] border border-[var(--line)] bg-[var(--surface)] p-1 shadow-xl">
+          <MenuItem icon={<Paperclip size={15} stroke-width={1.8} />} label="Add files or photos" hint="⌘U" onClick={() => act(props.onAttach)} />
+          <MenuItem icon={<Slash size={15} stroke-width={1.8} />} label="Slash commands" onClick={() => act(props.onSlash)} />
+          <div class="mx-2 my-1 h-px bg-[var(--line)]" />
+          <MenuItem icon={<FolderClock size={15} stroke-width={1.8} />} label="Browse sessions" onClick={() => act(() => props.onFire("/sessions"))} />
+          <MenuItem icon={<Sparkles size={15} stroke-width={1.8} />} label="New session" onClick={() => act(() => props.onFire("/new"))} />
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+function MenuItem(props: { icon: any; label: string; hint?: string; onClick: () => void }) {
   return (
     <button
       type="button"
-      aria-label={props.label}
-      title={props.label}
-      disabled={props.disabled}
       onClick={props.onClick}
-      class="flex size-8 shrink-0 items-center justify-center rounded-lg text-v2-icon-icon-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base disabled:opacity-40"
+      class="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[12.5px] text-[var(--text-2)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
     >
-      {props.children}
+      <span class="shrink-0 text-[var(--muted)]">{props.icon}</span>
+      <span class="min-w-0 flex-1 truncate">{props.label}</span>
+      <Show when={props.hint}>
+        <span class="shrink-0 text-[10.5px] text-[var(--faint)]">{props.hint}</span>
+      </Show>
     </button>
   );
 }
 
-/**
- * The model you're spending — a pill that switches it, not a label that
- * sends you to Settings. Codex subscriptions list their own models; anything
- * else opens Settings, where the key lives.
- */
-function ModelPill() {
+// ── reasoning effort (routes /reasoning) ──────────────────────────────────────
+
+const EFFORTS: { id: string; label: string }[] = [
+  { id: "minimal", label: "Minimal" },
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
+
+function ReasoningPill(props: { disabled?: boolean; onFire: (cmd: string) => void }) {
   const [open, setOpen] = createSignal(false);
+  const [level, setLevel] = createSignal<string>("");
+  let root: HTMLDivElement | undefined;
+  const onDown = (e: PointerEvent) => {
+    if (!root?.contains(e.target as Node)) setOpen(false);
+  };
+  document.addEventListener("pointerdown", onDown);
+  onCleanup(() => document.removeEventListener("pointerdown", onDown));
+
+  const pick = (id: string, label: string) => {
+    setLevel(label);
+    setOpen(false);
+    props.onFire(`/reasoning ${id}`);
+  };
+
+  return (
+    <div ref={root} class="relative">
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={() => setOpen((o) => !o)}
+        title="Reasoning effort — /reasoning"
+        class="inline-flex items-center gap-1.5 rounded-[var(--pill)] px-2 py-[5px] text-[11.5px] font-[650] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)] disabled:opacity-40"
+      >
+        <Gauge size={13} stroke-width={1.9} />
+        <span>{level() || "Effort"}</span>
+      </button>
+
+      <Show when={open()}>
+        <div class="aular-pop absolute bottom-full right-0 z-40 mb-1.5 w-[190px] rounded-[var(--r3)] border border-[var(--line)] bg-[var(--surface)] p-1 shadow-xl">
+          <div class="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-[0.07em] text-[var(--faint)]">
+            Reasoning effort
+          </div>
+          <For each={EFFORTS}>
+            {(e) => (
+              <button
+                type="button"
+                onClick={() => pick(e.id, e.label)}
+                class="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[12.5px] text-[var(--text-2)] transition-colors hover:bg-[var(--element-hover)]"
+                classList={{ "text-[var(--text)]": level() === e.label }}
+              >
+                <span class="min-w-0 flex-1">{e.label}</span>
+                <Show when={level() === e.label}>
+                  <span class="text-[var(--accent-text)]">✓</span>
+                </Show>
+              </button>
+            )}
+          </For>
+          <div class="mx-1 my-1 h-px bg-[var(--line)]" />
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              props.onFire("/reasoning show");
+            }}
+            class="w-full rounded-[7px] px-2.5 py-1.5 text-left text-[11.5px] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+          >
+            Show reasoning in replies
+          </button>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+// ── the model (routes /model + /fast) ─────────────────────────────────────────
+
+function ModelPill(props: { onFire: (cmd: string) => void }) {
+  const [open, setOpen] = createSignal(false);
+  const [fast, setFast] = createSignal(false);
   let root: HTMLDivElement | undefined;
   const onDown = (e: PointerEvent) => {
     if (!root?.contains(e.target as Node)) setOpen(false);
@@ -393,75 +560,106 @@ function ModelPill() {
     await actions.updateModel({ model }).catch(() => {});
   };
 
+  const toggleFast = () => {
+    setFast((f) => !f);
+    props.onFire("/fast");
+  };
+
   return (
     <Show when={m()}>
       {(model) => (
         <div ref={root} class="relative">
           <button
             type="button"
-            onClick={() =>
-              isCodex() ? setOpen((o) => !o) : actions.openSettings("model")
-            }
+            onClick={() => setOpen((o) => !o)}
             aria-expanded={open()}
-            title={
-              isCodex()
-                ? "Switch model"
-                : `${model().provider} · open model settings`
-            }
-            class="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+            title="Model"
+            class="inline-flex items-center gap-1.5 rounded-[var(--pill)] px-2 py-[5px] text-[11.5px] font-[650] text-[var(--text-2)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
           >
             <span
               class="size-1.5 shrink-0 rounded-full"
               classList={{
-                "bg-v2-state-fg-success": model().key_set || isCodex(),
-                "bg-v2-state-fg-warning": !model().key_set && !isCodex(),
+                "bg-[var(--green)]": model().key_set || isCodex(),
+                "bg-[var(--amber)]": !model().key_set && !isCodex(),
               }}
             />
-            <span class="max-w-[140px] truncate font-mono">
+            <span class="max-w-[150px] truncate">
               {model().model || model().provider || "no model"}
             </span>
           </button>
 
           <Show when={open()}>
-            <div class="aular-pop absolute bottom-full left-0 z-40 mb-1.5 max-h-[260px] w-[210px] overflow-y-auto rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-02 py-1 shadow-xl">
-              <div class="px-3 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-v2-text-text-faint">
-                ChatGPT models
+            <div class="aular-pop absolute bottom-full right-0 z-40 mb-1.5 max-h-[320px] w-[240px] overflow-y-auto rounded-[var(--r3)] border border-[var(--line)] bg-[var(--surface)] p-1 shadow-xl">
+              <div class="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-[0.07em] text-[var(--faint)]">
+                Model
               </div>
-              <For
-                each={models() ?? []}
+
+              <Show
+                when={isCodex()}
                 fallback={
-                  <p class="px-3 py-2 text-[11.5px] text-v2-text-text-faint">
-                    Loading…
-                  </p>
+                  <div class="px-2.5 pb-1.5 pt-0.5">
+                    <div class="flex items-center gap-2 rounded-[7px] bg-[var(--element)] px-2.5 py-2">
+                      <span class="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--text)]">
+                        {model().model || model().provider}
+                      </span>
+                    </div>
+                  </div>
                 }
               >
-                {(id) => (
-                  <button
-                    type="button"
-                    onClick={() => void pick(id)}
-                    class="flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11.5px] transition-colors hover:bg-v2-overlay-simple-overlay-hover"
-                    classList={{
-                      "bg-v2-overlay-simple-overlay-pressed text-v2-text-text-base":
-                        model().model === id,
-                      "text-v2-text-text-muted": model().model !== id,
-                    }}
-                  >
-                    {id}
-                  </button>
-                )}
-              </For>
-              <div class="mt-1 border-t border-v2-border-border-muted pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    actions.openSettings("model");
-                  }}
-                  class="w-full px-3 py-1.5 text-left text-[11.5px] text-v2-text-text-muted transition-colors hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base"
+                <For
+                  each={models() ?? []}
+                  fallback={<p class="px-2.5 py-2 text-[11.5px] text-[var(--faint)]">Loading…</p>}
                 >
-                  Model settings…
-                </button>
-              </div>
+                  {(id) => (
+                    <button
+                      type="button"
+                      onClick={() => void pick(id)}
+                      class="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left font-mono text-[11.5px] transition-colors hover:bg-[var(--element-hover)]"
+                      classList={{
+                        "text-[var(--text)]": model().model === id,
+                        "text-[var(--muted)]": model().model !== id,
+                      }}
+                    >
+                      <span class="min-w-0 flex-1 truncate">{id}</span>
+                      <Show when={model().model === id}>
+                        <span class="text-[var(--accent-text)]">✓</span>
+                      </Show>
+                    </button>
+                  )}
+                </For>
+              </Show>
+
+              <div class="mx-1 my-1 h-px bg-[var(--line)]" />
+
+              {/* Fast mode — Hermes' /fast, as a toggle. */}
+              <button
+                type="button"
+                onClick={toggleFast}
+                class="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--element-hover)]"
+              >
+                <Zap size={14} stroke-width={1.9} class="shrink-0 text-[var(--muted)]" />
+                <span class="min-w-0 flex-1 text-[12.5px] text-[var(--text-2)]">Fast mode</span>
+                <span
+                  class="flex h-[18px] w-8 flex-none rounded-full p-[2px] transition-colors"
+                  style={{
+                    background: fast() ? "var(--accent)" : "var(--element-active)",
+                    "justify-content": fast() ? "flex-end" : "flex-start",
+                  }}
+                >
+                  <span class="size-[14px] rounded-full bg-white" style={{ "box-shadow": "var(--shadow-1)" }} />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  actions.openSettings("model");
+                }}
+                class="w-full rounded-[7px] px-2.5 py-1.5 text-left text-[11.5px] text-[var(--muted)] transition-colors hover:bg-[var(--element-hover)] hover:text-[var(--text)]"
+              >
+                Model settings…
+              </button>
             </div>
           </Show>
         </div>
@@ -470,12 +668,13 @@ function ModelPill() {
   );
 }
 
-/**
- * How full the model's context is — a ring, not a bar, because it sits in a
- * row of square controls. The figure is an estimate (chars ÷ 4 plus prompt
- * overhead); `/status` gives the exact number, and the tooltip says so.
- */
-function ContextMeter(props: { ctx: ConversationContext | null; draft: string }) {
+// ── the context gauge (opens /status) ─────────────────────────────────────────
+
+function ContextGauge(props: {
+  ctx: ConversationContext | null;
+  draft: string;
+  onStatus: () => void;
+}) {
   return (
     <Show when={props.ctx}>
       {(c) => {
@@ -484,55 +683,77 @@ function ContextMeter(props: { ctx: ConversationContext | null; draft: string })
           Math.min(100, Math.round((used() * 100) / Math.max(1, c().context_length)));
         const draftTokens = () => Math.ceil(props.draft.trim().length / 4);
         const tone = () =>
-          pct() > 85
-            ? "var(--v2-state-fg-danger)"
-            : pct() > 60
-              ? "var(--v2-state-fg-warning)"
-              : "var(--v2-icon-icon-accent)";
-
+          pct() > 85 ? "var(--red)" : pct() > 60 ? "var(--amber)" : "var(--muted)";
         const R = 6.5;
         const C = 2 * Math.PI * R;
 
         return (
-          <span
-            class="flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-[11px] text-v2-text-text-faint"
+          <button
+            type="button"
+            onClick={props.onStatus}
             title={`≈${used().toLocaleString()} of ${c().context_length.toLocaleString()} context tokens${
               draftTokens() ? ` · ~${draftTokens()} in this draft` : ""
-            } (estimate — /status for exact)`}
+            } — click for /status`}
+            class="flex items-center gap-1.5 rounded-[var(--pill)] px-1.5 py-[5px] text-[11px] tabular-nums transition-colors hover:bg-[var(--element-hover)]"
+            style={{ color: tone() }}
           >
-            <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r={R} fill="none" stroke="var(--element-active)" stroke-width="2.5" />
               <circle
-                cx="8.5"
-                cy="8.5"
-                r={R}
-                fill="none"
-                stroke="var(--v2-background-bg-layer-03)"
-                stroke-width="2.5"
-              />
-              <circle
-                cx="8.5"
-                cy="8.5"
+                cx="8"
+                cy="8"
                 r={R}
                 fill="none"
                 stroke={tone()}
                 stroke-width="2.5"
                 stroke-linecap="round"
                 stroke-dasharray={`${(pct() / 100) * C} ${C}`}
-                transform="rotate(-90 8.5 8.5)"
+                transform="rotate(-90 8 8)"
               />
             </svg>
-            <span class="tabular-nums">{fmtTokens(used())}</span>
-          </span>
+            {pct()}%
+          </button>
         );
       }}
     </Show>
   );
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1000) {
-    const k = n / 1000;
-    return `${k >= 100 ? Math.round(k) : k.toFixed(1)}k`;
+// ── the command pane's trigger detection ─────────────────────────────────────
+
+type Trigger =
+  | { kind: "slash"; q: string; from: number }
+  | { kind: "mention"; q: string; from: number };
+
+/**
+ * Which completable token the caret sits in, if any.
+ *
+ * `/` only counts as a command when it opens the message and hasn't been
+ * followed by a space — once you've typed an argument the pane must get out of
+ * the way. `@` counts anywhere a word can start (message start or after
+ * whitespace), so you can mention a teammate mid-sentence.
+ */
+export function triggerAt(text: string, caret: number): Trigger | null {
+  const before = text.slice(0, caret);
+
+  if (text.startsWith("/") && !/\s/.test(before)) {
+    return { kind: "slash", q: before.slice(1).toLowerCase(), from: 0 };
   }
-  return String(n);
+
+  const at = before.lastIndexOf("@");
+  if (at !== -1) {
+    const frag = before.slice(at + 1);
+    const opensWord = at === 0 || /\s/.test(before[at - 1]!);
+    if (opensWord && !/\s/.test(frag)) {
+      return { kind: "mention", q: frag.toLowerCase(), from: at };
+    }
+  }
+  return null;
+}
+
+function prettyRole(role: string): string {
+  return role
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

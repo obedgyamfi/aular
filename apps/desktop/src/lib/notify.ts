@@ -1,5 +1,5 @@
 import { settings, settingsActions } from "./settings";
-import { actions, onAgentReply, state } from "./store";
+import { actions, onAgentReply, previewText, state } from "./store";
 
 /**
  * Desktop notifications for agent replies.
@@ -19,7 +19,7 @@ export function startNotifications(): () => void {
     if (agentId && settingsActions.isMuted(agentId)) return;
 
     const agent = state.agents.find((a) => a.id === agentId);
-    const body = message.content.replace(/<<<AULAR_CHUNK>>>/g, " ").trim();
+    const body = previewText(message.content);
 
     const note = new Notification(agent?.name ?? "AULAR", {
       body: body.length > 180 ? `${body.slice(0, 180)}…` : body,

@@ -34,6 +34,27 @@
 @import "./titlebar.css";
 @import "./app-menu.css";
 
+/* Registering the accent lets it TRANSITION. An unregistered custom property
+   is just a string to the engine, so it snaps; with a <color> syntax it can be
+   interpolated, which is what makes dynamic accenting ease from one agent to
+   the next instead of flashing. Unsupported engines simply snap — the colour
+   still changes, so this degrades rather than breaks. */
+@property --blurple {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #5865f2;
+}
+@property --accent-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #8b5cf6;
+}
+:root {
+  transition:
+    --blurple 0.45s ease,
+    --accent-2 0.45s ease;
+}
+
 @layer base {
   html,
   body,
@@ -45,8 +66,15 @@
   body {
     background: var(--v2-background-bg-deep);
     color: var(--v2-text-text-base);
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-    font-size: 13px;
+    /* The app's UI voice: Inter — the sans most AI-agent apps use, and the most
+       legible at this size (the platform default read poorly on this box). It's
+       bundled (see @font-face above); Georgia still carries the brand, headlines,
+       and the reading voice of an agent's reply. */
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+      Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    letter-spacing: -0.002em;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
   }
@@ -55,25 +83,80 @@
      the text a person actually reads or types. Copied from their shell. */
   #root {
     user-select: none;
+    width: 100%;
+    height: 100%;
   }
+
   input,
   textarea,
   [contenteditable] {
     user-select: text;
   }
 
+  /* Discord's scrollzone: a thin thumb in the darkest surface tone, so it reads
+     the same whether it's over the sidebar or the conversation, and no track.
+     The thumb used to reference --paper-6, a token that died with the warm-paper
+     theme — an undefined var paints nothing, so every scrollbar in the app was
+     silently falling back to the browser's own. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rail) transparent;
+  }
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--v2-border-border-base);
-    border: 3px solid transparent;
+    background: var(--rail);
+    border: 2px solid transparent;
     background-clip: content-box;
-    border-radius: 999px;
+    border-radius: 6px;
   }
-  ::-webkit-scrollbar-track {
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--line-strong);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  /* The 10px scrollzone is too wide for narrow columns (the collapsed icon
+     rail); this hides it there while keeping the wheel/trackpad scroll. */
+  .aular-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .aular-no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  /* Discord's channel list: the gutter is ALWAYS reserved, only the thumb fades
+     in when you're in the column. Reserving it is the whole trick — reveal a
+     scrollbar that takes width and the list reflows under the cursor every time
+     you enter it. Narrower than the global 10px because this is a 240px column. */
+  /* Back to `auto` deliberately: the global rule above sets scrollbar-width on
+     everything, and once that standard property is set Chromium ignores the
+     ::-webkit-scrollbar sizing entirely. Resetting it here hands width back to
+     the pseudo-element, so the preview (Chromium) and the app (WebKitGTK, which
+     only understands the pseudo-elements) reserve the same 8px. */
+  .aular-hover-scrollbar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  .aular-hover-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+  .aular-hover-scrollbar::-webkit-scrollbar-thumb {
+    background: transparent;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+  }
+  .aular-hover-scrollbar:hover::-webkit-scrollbar-thumb,
+  .aular-hover-scrollbar:focus-within::-webkit-scrollbar-thumb {
+    background: var(--rail);
+    background-clip: content-box;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -99,8 +182,44 @@
   /* Motion.
      opencode's Tailwind preset ships no keyframes at all — `animate-pulse`,
      `animate-bounce` and `animate-spin` resolve to `animation-name: none`. Every
-     moving thing in this app (the thinking indicator, the streaming caret, the
-     running-tool pulse) was therefore frozen. These are ours. */
+     moving thing in this app (the thinking indicator, the running-tool pulse,
+     the selection glow) was therefore frozen. These are ours. */
+
+  /* The design's spinner (opencode's preset ships no keyframes, so
+     animate-spin resolves to nothing — this is ours). */
+  @keyframes aular-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Work in motion: marching ants along a live dispatch edge on the canvas.
+     The offset matches the dash pattern (6+5), so the loop is seamless. */
+  @keyframes aular-dash {
+    to {
+      stroke-dashoffset: -11;
+    }
+  }
+
+  /* The Activity lens's live-work edges: green packets flowing doer→doer. The
+     dash period (2+9) matches the keyframe's -11 offset, so the loop is seamless. */
+  .og-activity {
+    animation: aular-dash 0.7s linear infinite;
+  }
+
+  /* The design's typing indicator, verbatim. */
+  @keyframes typedot {
+    0%,
+    60%,
+    100% {
+      opacity: 0.25;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
 
   /* The thinking indicator: dots that rise and fade in sequence. */
   @keyframes aular-think {
@@ -129,16 +248,6 @@
   }
 
   /* The caret at the end of a streaming reply. */
-  @keyframes aular-caret {
-    0%,
-    45% {
-      opacity: 1;
-    }
-    55%,
-    100% {
-      opacity: 0.15;
-    }
-  }
 
   /* A tool that is still running. */
   @keyframes aular-breathe {
@@ -158,6 +267,12 @@
      your messages), orange = what the agents produce (tokens out, replies).
      The theme accent can't do this job — it changes hue between schemes. */
   :root {
+    /* The design's second voice: a serif for the brand wordmark, headlines, and
+       the body of an agent's reply — the "warm paper" reading rhythm. Chrome
+       (nav, labels, controls) stays on the sans stack. Georgia is a platform
+       font on every target, so nothing is bundled. */
+    --font-serif: Georgia, "Times New Roman", "Noto Serif", serif;
+
     --viz-1: #2a78d6;
     --viz-2: #d95926;
     /* Commit-graph lanes: the validated categorical order, stepped per scheme. */
@@ -201,6 +316,66 @@
       transform: none;
     }
   }
+  /* ── Sign-in backdrop motion ──────────────────────────────────────────────
+     Transforms and opacity only, so nothing repaints. The reduced-motion rules
+     above flatten every one of these to a still frame. */
+  @keyframes aular-drift-a {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(4%, -5%, 0) scale(1.1);
+    }
+  }
+  @keyframes aular-drift-b {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(1.04);
+    }
+    50% {
+      transform: translate3d(-4%, 4%, 0) scale(0.94);
+    }
+  }
+  @keyframes aular-drift-c {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(0.98);
+    }
+    50% {
+      transform: translate3d(2%, 4%, 0) scale(1.12);
+    }
+  }
+
+  /* A slow swell on a tint layer — presence, not attention. */
+  @keyframes aular-glow {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* One tile of travel, so a repeating background loops seamlessly. */
+  @keyframes aular-grid-pan {
+    to {
+      transform: translate3d(46px, 46px, 0);
+    }
+  }
+
+  /* A band of light crossing the frame and back. */
+  @keyframes aular-sweep {
+    0%,
+    100% {
+      transform: translateX(-40%);
+    }
+    50% {
+      transform: translateX(300%);
+    }
+  }
+
   @keyframes aular-pop {
     from {
       opacity: 0;
@@ -228,25 +403,14 @@
     animation: aular-fade 0.15s cubic-bezier(0, 0, 0.2, 1) both;
   }
 
-  /* Pressing feedback: the independent `scale` property composes with any
-     transform a button already carries (translate-centered pills survive).
-     The transition lives on the base state so the RELEASE eases too —
-     declaring it only under :active made letting go snap, which read as
-     flicker. */
-  button {
-    transition-property: scale;
-    transition-duration: 0.1s;
-    transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
-  }
-  button:active:not(:disabled) {
-    scale: 0.97;
-  }
+  /* No press-shrink. Every button used to scale to 0.97 on :active, which
+     read as the label compressing and springing back on every click — most
+     obvious on a row whose whole job is to expand something. Hover tint says
+     "clickable" and the thing opening says "clicked"; a bouncing label adds
+     nothing but motion. */
 
   .aular-think {
     animation: aular-think 1.25s ease-in-out infinite;
-  }
-  .aular-caret {
-    animation: aular-caret 1s steps(1, end) infinite;
   }
   .aular-breathe {
     animation: aular-breathe 1.4s ease-in-out infinite;
@@ -270,13 +434,39 @@
     color: transparent;
     animation: aular-shimmer 1.9s linear infinite;
   }
+
+  /* The brand's serif voice, for the wordmark and headlines. */
+  .aular-serif {
+    font-family: var(--font-serif);
+  }
 }
 
 /* Agent output. Kept close to the prototype's reading rhythm, on opencode's
    type and color tokens. */
 @layer components {
+  /* An agent's reply reads as prose, not UI: the design sets it in the serif at
+     a slightly larger size and looser leading. Code, headings and inline tokens
+     opt back out below. */
   .aular-markdown {
+    font-family: var(--font-serif);
+    font-size: 14.5px;
+    line-height: 1.65;
+    /* Agent prose is not ordinary prose: it quotes raw JSON, absolute paths and
+       stack traces as plain text, with tokens far longer than any column. One of
+       those puts a horizontal scrollbar under the whole surface, so wrapping is
+       forced HERE — at the markdown layer — and every place that renders agent
+       output inherits it. Code blocks opt back out below (they scroll instead). */
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+  /* The chat opts out of serif: a clean, AI-standard sans (Inter). Sized to
+     match the user's bubble exactly — one balanced reading size for both
+     sides of the conversation. */
+  .aular-markdown-sans {
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 14px;
     line-height: 1.6;
+    letter-spacing: -0.003em;
   }
   .aular-markdown > * + * {
     margin-top: 0.7em;
@@ -310,14 +500,27 @@
     font-size: 0.9em;
     background: var(--v2-background-bg-layer-02);
     padding: 0.1em 0.35em;
-    border-radius: 3px;
+    border-radius: var(--r1);
+    /* Agents quote shell one-liners and absolute paths inline. Without a break
+       rule a single `code` span lays out at full intrinsic width and drags a
+       horizontal scrollbar under the whole conversation. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .aular-markdown pre {
     background: var(--v2-background-bg-layer-02);
     border: 1px solid var(--v2-border-border-muted);
-    border-radius: 6px;
+    border-radius: var(--r2);
     padding: 0.75em 0.9em;
     overflow-x: auto;
+    /* A code block scrolls inside itself; it must never widen its row. */
+    max-width: 100%;
+    min-width: 0;
+  }
+  /* Inside a block, restore normal code semantics — it scrolls, not wraps. */
+  .aular-markdown pre code {
+    overflow-wrap: normal;
+    word-break: normal;
   }
   .aular-markdown pre code {
     background: none;
@@ -338,5 +541,23 @@
     border: 1px solid var(--v2-border-border-muted);
     padding: 0.35em 0.6em;
     text-align: left;
+  }
+}
+
+/* opencode's Tailwind v4 preset only emitted `.font-medium` — its @theme defined
+   just --font-weight-medium, so `font-semibold` and `font-bold` were never
+   generated as utilities and every title/label using them fell back to 400. The
+   whole app read thin as a result. Define them explicitly here (the utilities
+   layer wins over base/components, and this is what makes the design's weights —
+   and readability — actually land). */
+@layer utilities {
+  .font-normal {
+    font-weight: 400;
+  }
+  .font-semibold {
+    font-weight: 600;
+  }
+  .font-bold {
+    font-weight: 700;
   }
 }

@@ -216,10 +216,7 @@ func (s *Server) handleCodexConnectStart(w http.ResponseWriter, r *http.Request)
 	cmd := s.hermesPy(r.Context(), `
 from hermes_cli import auth
 creds = auth._codex_device_code_login()
-try:
-    auth._save_codex_tokens(creds)
-except Exception:
-    pass
+auth._save_codex_tokens(creds["tokens"], creds.get("last_refresh"))
 auth._update_config_for_provider("openai-codex", creds.get("base_url", auth.DEFAULT_CODEX_BASE_URL))
 print("HERMES_CONNECT_OK", flush=True)
 `)

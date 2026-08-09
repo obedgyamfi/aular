@@ -136,6 +136,7 @@ func (s *Server) Router() http.Handler {
 	r.Post("/internal/edit", s.handleInternalEdit)
 	r.Post("/internal/activity", s.handleInternalActivity)
 	r.Post("/internal/tool-event", s.handleInternalToolEvent)
+	r.Get("/internal/home-channel", s.handleInternalHomeChannel)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(s.sessionAuth)
